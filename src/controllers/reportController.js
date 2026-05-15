@@ -52,11 +52,10 @@ const summary = async (req, res, next) => {
 
 const mrnSummary = async (req, res, next) => {
   try {
-    const { status, supplier_name, date_from, date_to } = req.query;
+    const { status, date_from, date_to } = req.query;
 
     const filters = {};
     if (status) filters.status = status;
-    if (supplier_name) filters.supplier_name = supplier_name;
     if (date_from) filters.date_from = date_from;
     if (date_to) filters.date_to = date_to;
 

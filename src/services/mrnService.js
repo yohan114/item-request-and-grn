@@ -25,10 +25,6 @@ const generateMRNNumber = async (transaction) => {
   return `${prefix}${String(sequence).padStart(4, '0')}`;
 };
 
-const calculateTotalAmount = (quantity, unit_price) => {
-  return parseFloat(quantity) * parseFloat(unit_price);
-};
-
 const createMRNWithRetry = async (data) => {
   let lastError;
 
@@ -62,6 +58,5 @@ const createMRNWithRetry = async (data) => {
 
 module.exports = {
   generateMRNNumber,
-  calculateTotalAmount,
   createMRNWithRetry
 };

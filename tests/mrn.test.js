@@ -64,19 +64,18 @@ describe('MRN - Create', () => {
       .post('/api/mrns')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
-        supplier_name: 'Test Supplier',
-        purchase_category: 'Office Supplies',
-        item_name: 'Printer Paper',
-        item_description: 'A4 paper ream',
-        quantity: 10,
-        unit_price: 25.50
+        request_for: 'Vehicle',
+        items: [
+          { item_no: '1', description: 'Printer Paper', qty: 10 }
+        ],
+        request_person_name: 'John Doe',
+        request_person_designation: 'Manager'
       });
 
     expect(res.status).toBe(201);
     expect(res.body.success).toBe(true);
     expect(res.body.data.mrn_number).toBeDefined();
-    expect(res.body.data.supplier_name).toBe('Test Supplier');
-    expect(res.body.data.item_name).toBe('Printer Paper');
+    expect(res.body.data.request_for).toBe('Vehicle');
     createdMRNId = res.body.data.id;
   });
 
@@ -85,11 +84,10 @@ describe('MRN - Create', () => {
       .post('/api/mrns')
       .set('Authorization', `Bearer ${storeKeeperToken}`)
       .send({
-        supplier_name: 'SK Supplier',
-        purchase_category: 'Tools',
-        item_name: 'Hammer',
-        quantity: 2,
-        unit_price: 35.00
+        request_for: 'Office Equipment',
+        items: [
+          { item_no: '1', description: 'Hammer', qty: 2 }
+        ]
       });
 
     expect(res.status).toBe(201);
@@ -101,11 +99,10 @@ describe('MRN - Create', () => {
       .post('/api/mrns')
       .set('Authorization', `Bearer ${viewerToken}`)
       .send({
-        supplier_name: 'Viewer Supplier',
-        purchase_category: 'Misc',
-        item_name: 'Item X',
-        quantity: 1,
-        unit_price: 10.00
+        request_for: 'Vehicle',
+        items: [
+          { item_no: '1', description: 'Item X', qty: 1 }
+        ]
       });
 
     expect(res.status).toBe(403);
@@ -131,11 +128,10 @@ describe('MRN - List with Pagination', () => {
         .post('/api/mrns')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
-          supplier_name: `Supplier ${i}`,
-          purchase_category: i % 2 === 0 ? 'Electronics' : 'Stationery',
-          item_name: `Item ${i}`,
-          quantity: i + 1,
-          unit_price: 10.00
+          request_for: `Request ${i}`,
+          items: [
+            { item_no: '1', description: `Item ${i}`, qty: i + 1 }
+          ]
         });
     }
   });
@@ -168,17 +164,14 @@ describe('MRN - List with Pagination', () => {
     });
   });
 
-  it('should support supplier_name filter', async () => {
+  it('should support request_for filter', async () => {
     const res = await request(app)
-      .get('/api/mrns?supplier_name=Supplier 1')
+      .get('/api/mrns?request_for=Request 1')
       .set('Authorization', `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.data.length).toBeGreaterThan(0);
-    res.body.data.forEach(record => {
-      expect(record.supplier_name).toContain('Supplier 1');
-    });
   });
 });
 
@@ -210,21 +203,22 @@ describe('MRN - Update', () => {
       .put(`/api/mrns/${createdMRNId}`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
-        supplier_name: 'Updated Supplier',
-        quantity: 20,
-        unit_price: 30.00
+        request_for: 'Updated Vehicle',
+        items: [
+          { item_no: '1', description: 'Updated Item', qty: 20 }
+        ]
       });
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
-    expect(res.body.data.supplier_name).toBe('Updated Supplier');
+    expect(res.body.data.request_for).toBe('Updated Vehicle');
   });
 
   it('should return 404 for non-existent ID', async () => {
     const res = await request(app)
       .put('/api/mrns/00000000-0000-0000-0000-000000000000')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ supplier_name: 'Test' });
+      .send({ request_for: 'Test' });
 
     expect(res.status).toBe(404);
     expect(res.body.success).toBe(false);
@@ -237,11 +231,10 @@ describe('MRN - Delete', () => {
       .post('/api/mrns')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
-        supplier_name: 'Delete Supplier',
-        purchase_category: 'Test',
-        item_name: 'Delete Item',
-        quantity: 1,
-        unit_price: 10.00
+        request_for: 'Delete Test',
+        items: [
+          { item_no: '1', description: 'Delete Item', qty: 1 }
+        ]
       });
 
     const deleteId = createRes.body.data.id;
@@ -265,11 +258,10 @@ describe('MRN - Delete', () => {
       .post('/api/mrns')
       .set('Authorization', `Bearer ${storeKeeperToken}`)
       .send({
-        supplier_name: 'SK Delete Supplier',
-        purchase_category: 'Test',
-        item_name: 'SK Delete Item',
-        quantity: 1,
-        unit_price: 10.00
+        request_for: 'SK Delete Test',
+        items: [
+          { item_no: '1', description: 'SK Delete Item', qty: 1 }
+        ]
       });
 
     const res = await request(app)

@@ -10,16 +10,15 @@ function MRNFormPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [form, setForm] = useState({
-    supplier_name: '',
-    purchase_category: 'Office Supplies',
-    item_name: '',
-    item_description: '',
-    quantity: 1,
-    unit_price: 0,
-    purchase_reason: '',
-    received_date: '',
-    remarks: ''
+    request_for: '',
+    request_person_name: '',
+    request_person_designation: '',
+    approval_person_name: '',
+    approval_person_designation: ''
   });
+  const [items, setItems] = useState([{ item_no: '', description: '', qty: '' }]);
+
+  const today = new Date().toLocaleDateString();
 
   useEffect(() => {
     if (isEdit) {
@@ -33,16 +32,16 @@ function MRNFormPage() {
       const res = await mrnAPI.getById(id);
       const data = res.data.data;
       setForm({
-        supplier_name: data.supplier_name || '',
-        purchase_category: data.purchase_category || 'Office Supplies',
-        item_name: data.item_name || '',
-        item_description: data.item_description || '',
-        quantity: data.quantity || 1,
-        unit_price: data.unit_price || 0,
-        purchase_reason: data.purchase_reason || '',
-        received_date: data.received_date ? data.received_date.split('T')[0] : '',
-        remarks: data.remarks || ''
+        request_for: data.request_for || '',
+        request_person_name: data.request_person_name || '',
+        request_person_designation: data.request_person_designation || '',
+        approval_person_name: data.approval_person_name || '',
+        approval_person_designation: data.approval_person_designation || ''
       });
+      const parsedItems = typeof data.items === 'string' ? JSON.parse(data.items) : data.items;
+      if (Array.isArray(parsedItems) && parsedItems.length > 0) {
+        setItems(parsedItems);
+      }
     } catch (err) {
       setError('Failed to load record');
     } finally {
@@ -55,24 +54,60 @@ function MRNFormPage() {
     setForm(prev => ({ ...prev, [name]: value }));
   };
 
-  const totalAmount = (parseFloat(form.quantity) || 0) * (parseFloat(form.unit_price) || 0);
+  const handleItemChange = (index, field, value) => {
+    setItems(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+      return updated;
+    });
+  };
+
+  const addItem = () => {
+    setItems(prev => [...prev, { item_no: '', description: '', qty: '' }]);
+  };
+
+  const removeItem = (index) => {
+    if (items.length <= 1) return;
+    setItems(prev => prev.filter((_, i) => i !== index));
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
-    if (!form.supplier_name.trim()) { setError('Supplier name is required'); return; }
-    if (!form.item_name.trim()) { setError('Item name is required'); return; }
-    if (!form.quantity || form.quantity <= 0) { setError('Quantity must be greater than 0'); return; }
-    if (form.unit_price === '' || form.unit_price < 0) { setError('Unit price must be valid'); return; }
+    if (!form.request_for.trim()) {
+      setError('Request For is required');
+      return;
+    }
+
+    for (let i = 0; i < items.length; i++) {
+      if (!items[i].item_no.trim()) {
+        setError(`Item ${i + 1}: Item No is required`);
+        return;
+      }
+      if (!items[i].description.trim()) {
+        setError(`Item ${i + 1}: Description is required`);
+        return;
+      }
+      if (!items[i].qty || parseFloat(items[i].qty) <= 0) {
+        setError(`Item ${i + 1}: Quantity must be greater than 0`);
+        return;
+      }
+    }
 
     try {
       setSaving(true);
       const payload = {
-        ...form,
-        quantity: parseFloat(form.quantity),
-        unit_price: parseFloat(form.unit_price),
-        total_amount: totalAmount
+        request_for: form.request_for,
+        items: items.map(item => ({
+          item_no: item.item_no,
+          description: item.description,
+          qty: parseFloat(item.qty)
+        })),
+        request_person_name: form.request_person_name || undefined,
+        request_person_designation: form.request_person_designation || undefined,
+        approval_person_name: form.approval_person_name || undefined,
+        approval_person_designation: form.approval_person_designation || undefined
       };
 
       if (isEdit) {
@@ -94,7 +129,7 @@ function MRNFormPage() {
     <div>
       <div className="card">
         <div className="card-header">
-          <h2>{isEdit ? 'Edit' : 'New'} Material Receipt Note</h2>
+          <h2>{isEdit ? 'Edit' : 'New'} Material Request Note</h2>
           <button className="btn btn-secondary" onClick={() => navigate('/mrns')}>
             Cancel
           </button>
@@ -105,124 +140,141 @@ function MRNFormPage() {
         <form onSubmit={handleSubmit}>
           <div className="form-row">
             <div className="form-group">
-              <label>Supplier Name *</label>
+              <label>Date</label>
               <input
                 type="text"
-                name="supplier_name"
                 className="form-control"
-                value={form.supplier_name}
-                onChange={handleChange}
-                placeholder="Enter supplier name"
-                required
+                value={today}
+                readOnly
+                style={{ background: '#f8fafc' }}
               />
             </div>
             <div className="form-group">
-              <label>Category *</label>
-              <select name="purchase_category" className="form-control" value={form.purchase_category} onChange={handleChange}>
-                <option value="Office Supplies">Office Supplies</option>
-                <option value="IT Equipment">IT Equipment</option>
-                <option value="Furniture">Furniture</option>
-                <option value="Maintenance">Maintenance</option>
-                <option value="Raw Materials">Raw Materials</option>
-                <option value="Other">Other</option>
-              </select>
+              <label>Request For *</label>
+              <input
+                type="text"
+                name="request_for"
+                className="form-control"
+                value={form.request_for}
+                onChange={handleChange}
+                placeholder="e.g. Vehicle, Office Equipment"
+                required
+              />
             </div>
           </div>
 
           <div className="form-group">
-            <label>Item Name *</label>
-            <input
-              type="text"
-              name="item_name"
-              className="form-control"
-              value={form.item_name}
-              onChange={handleChange}
-              placeholder="Enter item name"
-              required
-            />
-          </div>
-
-          <div className="form-group">
-            <label>Item Description</label>
-            <textarea
-              name="item_description"
-              className="form-control"
-              value={form.item_description}
-              onChange={handleChange}
-              placeholder="Enter item description..."
-            />
+            <label>Items *</label>
+            <div className="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Item No</th>
+                    <th>Description</th>
+                    <th>Quantity</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((item, index) => (
+                    <tr key={index}>
+                      <td>
+                        <input
+                          type="text"
+                          className="form-control"
+                          value={item.item_no}
+                          onChange={(e) => handleItemChange(index, 'item_no', e.target.value)}
+                          placeholder="Item No"
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="text"
+                          className="form-control"
+                          value={item.description}
+                          onChange={(e) => handleItemChange(index, 'description', e.target.value)}
+                          placeholder="Description"
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          className="form-control"
+                          value={item.qty}
+                          onChange={(e) => handleItemChange(index, 'qty', e.target.value)}
+                          placeholder="Qty"
+                          min="1"
+                        />
+                      </td>
+                      <td>
+                        {items.length > 1 && (
+                          <button
+                            type="button"
+                            className="btn btn-danger btn-sm"
+                            onClick={() => removeItem(index)}
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <button type="button" className="btn btn-secondary" onClick={addItem} style={{ marginTop: 8 }}>
+              + Add Item
+            </button>
           </div>
 
           <div className="form-row">
             <div className="form-group">
-              <label>Quantity *</label>
+              <label>Request Person Name</label>
               <input
-                type="number"
-                name="quantity"
+                type="text"
+                name="request_person_name"
                 className="form-control"
-                value={form.quantity}
+                value={form.request_person_name}
                 onChange={handleChange}
-                min="1"
-                required
+                placeholder="Name of requesting person"
               />
             </div>
             <div className="form-group">
-              <label>Unit Price *</label>
+              <label>Request Person Designation</label>
               <input
-                type="number"
-                name="unit_price"
+                type="text"
+                name="request_person_designation"
                 className="form-control"
-                value={form.unit_price}
+                value={form.request_person_designation}
                 onChange={handleChange}
-                min="0"
-                step="0.01"
-                required
+                placeholder="Designation"
               />
             </div>
           </div>
 
-          <div className="form-group">
-            <label>Total Amount</label>
-            <input
-              type="text"
-              className="form-control"
-              value={totalAmount.toFixed(2)}
-              readOnly
-              style={{ background: '#f8fafc' }}
-            />
-          </div>
-
-          <div className="form-group">
-            <label>Purchase Reason</label>
-            <textarea
-              name="purchase_reason"
-              className="form-control"
-              value={form.purchase_reason}
-              onChange={handleChange}
-              placeholder="Enter reason for purchase..."
-            />
-          </div>
-
-          <div className="form-group">
-            <label>Received Date</label>
-            <input
-              type="date"
-              name="received_date"
-              className="form-control"
-              value={form.received_date}
-              onChange={handleChange}
-            />
-          </div>
-
-          <div className="form-group">
-            <label>Remarks</label>
-            <textarea
-              name="remarks"
-              className="form-control"
-              value={form.remarks}
-              onChange={handleChange}
-              placeholder="Additional notes..."
-            />
+          <div className="form-row">
+            <div className="form-group">
+              <label>Approval Person Name</label>
+              <input
+                type="text"
+                name="approval_person_name"
+                className="form-control"
+                value={form.approval_person_name}
+                onChange={handleChange}
+                placeholder="Name of approval person"
+              />
+            </div>
+            <div className="form-group">
+              <label>Approval Person Designation</label>
+              <input
+                type="text"
+                name="approval_person_designation"
+                className="form-control"
+                value={form.approval_person_designation}
+                onChange={handleChange}
+                placeholder="Designation"
+              />
+            </div>
           </div>
 
           <div className="btn-group mt-2">

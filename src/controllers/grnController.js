@@ -148,7 +148,7 @@ const list = async (req, res, next) => {
         {
           model: MRN,
           as: 'mrn',
-          attributes: ['id', 'mrn_number', 'supplier_name', 'item_name']
+          attributes: ['id', 'mrn_number', 'request_for']
         }
       ],
       order: [['created_at', 'DESC']],
