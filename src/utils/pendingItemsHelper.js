@@ -51,24 +51,42 @@ function getItemQuantity(item) {
 }
 
 /**
+ * Matches a received item to an MRN item by index first, then by name fallback.
+ * @param {object} ri - ReceivedItem model instance or plain object.
+ * @param {number} mrnItemIndex - The index of the MRN item in the items array.
+ * @param {string} mrnItemId - The identifier (item_name/item_no) of the MRN item.
+ * @returns {boolean}
+ */
+function receivedItemMatchesMrnItem(ri, mrnItemIndex, mrnItemId) {
+  // If the received item has an item_index, use it for precise matching
+  const riIndex = ri.item_index !== undefined && ri.item_index !== null ? parseInt(ri.item_index, 10) : null;
+  if (riIndex !== null) {
+    return riIndex === mrnItemIndex;
+  }
+  // Fallback: match by item name/number (legacy records without item_index)
+  const itemDetails = parseItemDetails(ri.item_details);
+  const riItemId = getItemIdentifier(itemDetails);
+  return riItemId && riItemId === mrnItemId;
+}
+
+/**
  * Computes pending items with remaining quantities.
  *
  * @param {Array} mrnItems - The MRN items array (parsed or raw JSON string).
  * @param {Array} receivedItems - Array of ReceivedItem model instances or plain objects.
- * @returns {Array} Array of pending items with { item_name, item_no, description, quantity, qty, total_received, remaining_qty }.
+ * @returns {Array} Array of pending items with { item_name, item_no, description, quantity, qty, total_received, remaining_qty, item_index }.
  */
 function computePendingItems(mrnItems, receivedItems) {
   const items = parseItems(mrnItems);
   const pendingItems = [];
 
-  for (const item of items) {
+  for (let index = 0; index < items.length; index++) {
+    const item = items[index];
     const itemId = getItemIdentifier(item);
     const itemQty = getItemQuantity(item);
     let totalReceived = 0;
     for (const ri of receivedItems) {
-      const itemDetails = parseItemDetails(ri.item_details);
-      const riItemId = getItemIdentifier(itemDetails);
-      if (riItemId && riItemId === itemId) {
+      if (receivedItemMatchesMrnItem(ri, index, itemId)) {
         totalReceived += parseFloat(ri.received_qty) || 0;
       }
     }
@@ -82,6 +100,7 @@ function computePendingItems(mrnItems, receivedItems) {
         qty: itemQty,
         total_received: totalReceived,
         remaining_qty: remainingQty,
+        item_index: index,
         item_status: item.item_status || 'Pending Approval'
       });
     }
@@ -101,14 +120,13 @@ function allItemsReceived(mrnItems, receivedItems) {
   const items = parseItems(mrnItems);
   if (items.length === 0) return false;
 
-  for (const item of items) {
+  for (let index = 0; index < items.length; index++) {
+    const item = items[index];
     const itemId = getItemIdentifier(item);
     const itemQty = getItemQuantity(item);
     let totalReceived = 0;
     for (const ri of receivedItems) {
-      const itemDetails = parseItemDetails(ri.item_details);
-      const riItemId = getItemIdentifier(itemDetails);
-      if (riItemId && riItemId === itemId) {
+      if (receivedItemMatchesMrnItem(ri, index, itemId)) {
         totalReceived += parseFloat(ri.received_qty) || 0;
       }
     }
@@ -130,14 +148,12 @@ function allItemsReceived(mrnItems, receivedItems) {
 function computeItemStatuses(mrnItems, receivedItems) {
   const items = parseItems(mrnItems);
 
-  return items.map(item => {
+  return items.map((item, index) => {
     const itemId = getItemIdentifier(item);
     const itemQty = getItemQuantity(item);
     let totalReceived = 0;
     for (const ri of receivedItems) {
-      const itemDetails = parseItemDetails(ri.item_details);
-      const riItemId = getItemIdentifier(itemDetails);
-      if (riItemId && riItemId === itemId) {
+      if (receivedItemMatchesMrnItem(ri, index, itemId)) {
         totalReceived += parseFloat(ri.received_qty) || 0;
       }
     }
@@ -164,6 +180,7 @@ module.exports = {
   parseItemDetails,
   getItemIdentifier,
   getItemQuantity,
+  receivedItemMatchesMrnItem,
   computePendingItems,
   allItemsReceived,
   computeItemStatuses

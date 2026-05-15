@@ -2,10 +2,10 @@ const fs = require('fs');
 const path = require('path');
 const { body } = require('express-validator');
 const { Op } = require('sequelize');
-const { ReceivedItem, User, MRN } = require('../models');
+const { ReceivedItem, User, MRN, sequelize } = require('../models');
 const { createReceivedItemWithRetry } = require('../services/receivedItemService');
 const { createAuditLog } = require('../utils/auditLogger');
-const { allItemsReceived, computeItemStatuses, parseItems, getItemIdentifier, getItemQuantity } = require('../utils/pendingItemsHelper');
+const { allItemsReceived, computeItemStatuses, computePendingItems, parseItems, getItemIdentifier, getItemQuantity, receivedItemMatchesMrnItem } = require('../utils/pendingItemsHelper');
 
 const uploadsDir = path.join(__dirname, '..', '..', 'uploads');
 
@@ -74,6 +74,52 @@ const create = async (req, res, next) => {
       receivedItemData.image = req.file.filename;
     }
 
+    // Server-side over-receive check: verify received_qty does not exceed remaining
+    const existingReceivedItems = await ReceivedItem.findAll({ where: { mrn_id } });
+    const mrnItems = parseItems(mrn.items);
+    const parsedItemDetails = typeof item_details === 'string' ? JSON.parse(item_details) : item_details;
+    const itemIndex = item_index !== undefined ? parseInt(item_index, 10) : null;
+    const incomingItemId = getItemIdentifier(parsedItemDetails || {});
+
+    // Find the matching MRN item to get its total quantity
+    let matchedMrnItem = null;
+    let matchedMrnItemIndex = null;
+    for (let i = 0; i < mrnItems.length; i++) {
+      const mrnItemId = getItemIdentifier(mrnItems[i]);
+      if (itemIndex !== null && itemIndex === i) {
+        matchedMrnItem = mrnItems[i];
+        matchedMrnItemIndex = i;
+        break;
+      } else if (itemIndex === null && incomingItemId && incomingItemId === mrnItemId) {
+        matchedMrnItem = mrnItems[i];
+        matchedMrnItemIndex = i;
+        break;
+      }
+    }
+
+    if (matchedMrnItem) {
+      const itemQty = getItemQuantity(matchedMrnItem);
+      let totalAlreadyReceived = 0;
+      for (const ri of existingReceivedItems) {
+        if (receivedItemMatchesMrnItem(ri, matchedMrnItemIndex, getItemIdentifier(matchedMrnItem))) {
+          totalAlreadyReceived += parseFloat(ri.received_qty) || 0;
+        }
+      }
+      const remaining = itemQty - totalAlreadyReceived;
+      if (parseFloat(received_qty) > remaining) {
+        if (req.file) {
+          const filePath = path.join(uploadsDir, req.file.filename);
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+          }
+        }
+        return res.status(400).json({
+          success: false,
+          message: `Received quantity (${received_qty}) exceeds remaining quantity (${remaining}) for this item`
+        });
+      }
+    }
+
     const receivedItem = await createReceivedItemWithRetry(receivedItemData);
 
     await createAuditLog({
@@ -85,58 +131,59 @@ const create = async (req, res, next) => {
       ip_address: req.ip
     });
 
-    // Update MRN item statuses and overall status
+    // Update MRN item statuses and overall status (wrapped in transaction to prevent race)
     let mrnAutoClosed = false;
     try {
-      const mrnRecord = await MRN.findByPk(mrn_id);
-      if (mrnRecord && mrnRecord.status !== 'Closed') {
-        const allReceivedItems = await ReceivedItem.findAll({ where: { mrn_id } });
+      await sequelize.transaction(async (t) => {
+        const mrnRecord = await MRN.findByPk(mrn_id, { lock: t.LOCK.UPDATE, transaction: t });
+        if (mrnRecord && mrnRecord.status !== 'Closed') {
+          const allReceivedItems = await ReceivedItem.findAll({ where: { mrn_id }, transaction: t });
 
-        // Compute per-item statuses
-        const updatedItems = computeItemStatuses(mrnRecord.items, allReceivedItems);
-        const updateData = { items: updatedItems };
+          // Compute per-item statuses
+          const updatedItems = computeItemStatuses(mrnRecord.items, allReceivedItems);
+          const updateData = { items: updatedItems };
 
-        if (allItemsReceived(mrnRecord.items, allReceivedItems)) {
-          updateData.status = 'Closed';
-          mrnAutoClosed = true;
-        } else {
-          // Check if any items have been received
-          const items = parseItems(mrnRecord.items);
-          let anyReceived = false;
-          for (const item of items) {
-            const itemId = getItemIdentifier(item);
-            const itemQty = getItemQuantity(item);
-            let totalReceived = 0;
-            for (const ri of allReceivedItems) {
-              const riDetails = typeof ri.item_details === 'string' ? JSON.parse(ri.item_details) : ri.item_details;
-              const riItemId = getItemIdentifier(riDetails || {});
-              if (riItemId && riItemId === itemId) {
-                totalReceived += parseFloat(ri.received_qty) || 0;
+          if (allItemsReceived(mrnRecord.items, allReceivedItems)) {
+            updateData.status = 'Closed';
+            mrnAutoClosed = true;
+          } else {
+            // Check if any items have been received
+            const items = parseItems(mrnRecord.items);
+            let anyReceived = false;
+            for (let i = 0; i < items.length; i++) {
+              const item = items[i];
+              const itemId = getItemIdentifier(item);
+              const itemQty = getItemQuantity(item);
+              let totalReceived = 0;
+              for (const ri of allReceivedItems) {
+                if (receivedItemMatchesMrnItem(ri, i, itemId)) {
+                  totalReceived += parseFloat(ri.received_qty) || 0;
+                }
+              }
+              if (totalReceived > 0) {
+                anyReceived = true;
+                break;
               }
             }
-            if (totalReceived > 0) {
-              anyReceived = true;
-              break;
+            if (anyReceived) {
+              updateData.status = 'Partially Received';
             }
           }
-          if (anyReceived) {
-            updateData.status = 'Partially Received';
+
+          await mrnRecord.update(updateData, { transaction: t });
+
+          if (mrnAutoClosed) {
+            await createAuditLog({
+              user_id: req.user.id,
+              action: 'AUTO_CLOSE',
+              entity_type: 'MRN',
+              entity_id: mrnRecord.id,
+              new_values: { status: 'Closed', reason: 'All items received' },
+              ip_address: req.ip
+            });
           }
         }
-
-        await mrnRecord.update(updateData);
-
-        if (mrnAutoClosed) {
-          await createAuditLog({
-            user_id: req.user.id,
-            action: 'AUTO_CLOSE',
-            entity_type: 'MRN',
-            entity_id: mrnRecord.id,
-            new_values: { status: 'Closed', reason: 'All items received' },
-            ip_address: req.ip
-          });
-        }
-      }
+      });
     } catch (autoCloseErr) {
       console.error('Auto-close check failed:', autoCloseErr);
     }

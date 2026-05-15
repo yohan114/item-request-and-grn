@@ -1,20 +1,28 @@
 const { body } = require('express-validator');
 const { Op } = require('sequelize');
-const { GRN, User, Attachment, ReceivedItem, MRN } = require('../models');
+const { GRN, User, Attachment, ReceivedItem, MRN, sequelize } = require('../models');
 const { createGRNWithRetry } = require('../services/grnService');
 const { createAuditLog } = require('../utils/auditLogger');
-const { parseItems, getItemIdentifier } = require('../utils/pendingItemsHelper');
+const { parseItems, getItemIdentifier, parseItemDetails } = require('../utils/pendingItemsHelper');
 
 const createValidation = [
   body('supplier_name').trim().notEmpty().withMessage('Supplier name is required'),
   body('project_name').optional({ values: 'falsy' }).trim(),
   body('invoice_number').optional({ values: 'falsy' }).trim(),
-  body('items').isArray({ min: 1 }).withMessage('Items must be a non-empty array'),
+  body('items').optional().isArray({ min: 1 }).withMessage('Items must be a non-empty array'),
   body('items.*.item_no').optional().trim(),
   body('items.*.item_name').optional().trim(),
-  body('items.*.description').trim().notEmpty().withMessage('Each item must have a description'),
-  body('items').custom((items) => {
-    if (!Array.isArray(items)) return true;
+  body('items.*.description').optional().trim().notEmpty().withMessage('Each item must have a description'),
+  body('items').custom((items, { req: request }) => {
+    // Items validation only required when no received_item_ids (legacy flow)
+    const receivedItemIds = request.body.received_item_ids;
+    if (receivedItemIds && (Array.isArray(receivedItemIds) ? receivedItemIds.length > 0 : true)) {
+      // Items will be derived server-side from received items
+      return true;
+    }
+    if (!Array.isArray(items) || items.length === 0) {
+      throw new Error('Items are required when received_item_ids is not provided');
+    }
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       const itemName = item.item_name || item.item_no;
@@ -67,7 +75,7 @@ const create = async (req, res, next) => {
       supplier_name,
       project_name: project_name || null,
       invoice_number: invoice_number || null,
-      items,
+      items: [], // Will be derived from received items if received_item_ids provided
       request_person_name: request_person_name || null,
       request_person_designation: request_person_designation || null,
       approval_person_name: approval_person_name || null,
@@ -135,6 +143,23 @@ const create = async (req, res, next) => {
           });
         }
       }
+
+      // Derive items array from actual received item records (Fix #5: don't trust client payload)
+      grnData.items = receivedItems.map(ri => {
+        const details = parseItemDetails(ri.item_details);
+        return {
+          item_name: getItemIdentifier(details) || 'Unknown Item',
+          item_no: getItemIdentifier(details) || 'Unknown Item',
+          description: details.description || '',
+          quantity: parseFloat(ri.received_qty) || 0,
+          qty: parseFloat(ri.received_qty) || 0,
+          unit: details.unit || '',
+          item_index: ri.item_index !== null && ri.item_index !== undefined ? ri.item_index : undefined
+        };
+      });
+    } else {
+      // No received_item_ids: use client-provided items (legacy/fallback)
+      grnData.items = items || [];
     }
 
     const grn = await createGRNWithRetry(grnData);
@@ -555,19 +580,22 @@ const rejectGRN = async (req, res, next) => {
 
     const currentHistory = grn.approval_history || [];
 
-    await grn.update({
-      approval_status: 'Rejected',
-      status: 'Rejected',
-      approved_by: req.user.id,
-      approval_remarks: approval_remarks || null,
-      approval_history: [...currentHistory, approvalHistoryEntry]
-    });
+    // Wrap GRN rejection and received item unlink in a single transaction (Fix #4)
+    await sequelize.transaction(async (t) => {
+      await grn.update({
+        approval_status: 'Rejected',
+        status: 'Rejected',
+        approved_by: req.user.id,
+        approval_remarks: approval_remarks || null,
+        approval_history: [...currentHistory, approvalHistoryEntry]
+      }, { transaction: t });
 
-    // Revert linked received items so they can be re-linked to a new GRN
-    await ReceivedItem.update(
-      { grn_status: 'Pending', grn_id: null },
-      { where: { grn_id: grn.id } }
-    );
+      // Revert linked received items so they can be re-linked to a new GRN
+      await ReceivedItem.update(
+        { grn_status: 'Pending', grn_id: null },
+        { where: { grn_id: grn.id }, transaction: t }
+      );
+    });
 
     await createAuditLog({
       user_id: req.user.id,
