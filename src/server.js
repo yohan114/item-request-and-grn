@@ -29,6 +29,17 @@ const createDefaultAdmin = async () => {
 
 const startServer = async () => {
   try {
+    // JWT secret startup guard
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret || jwtSecret === 'default_secret_change_me') {
+      if (process.env.NODE_ENV === 'production') {
+        console.error('FATAL: JWT_SECRET environment variable must be set in production');
+        process.exit(1);
+      } else {
+        console.warn('WARNING: JWT_SECRET is not set or is using the default value. Do not use defaults in production.');
+      }
+    }
+
     await sequelize.sync();
     console.log('Database synced successfully');
 

@@ -1,5 +1,7 @@
 const { LocalPurchase } = require('../models');
 
+const MAX_RETRIES = 3;
+
 const generateMRN = async () => {
   const today = new Date();
   const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
@@ -48,8 +50,37 @@ const calculateTotalAmount = (quantity, unit_price) => {
   return parseFloat(quantity) * parseFloat(unit_price);
 };
 
+const createWithRetry = async (purchaseData) => {
+  let lastError;
+
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      const mrn_number = await generateMRN();
+      const grn_number = await generateGRN();
+
+      const purchase = await LocalPurchase.create({
+        ...purchaseData,
+        mrn_number,
+        grn_number
+      });
+
+      return purchase;
+    } catch (error) {
+      lastError = error;
+      if (error.name === 'SequelizeUniqueConstraintError') {
+        // Retry with a new sequence number
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  throw lastError;
+};
+
 module.exports = {
   generateMRN,
   generateGRN,
-  calculateTotalAmount
+  calculateTotalAmount,
+  createWithRetry
 };

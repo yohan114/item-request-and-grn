@@ -23,6 +23,15 @@ const changeStatus = async ({ purchaseId, newStatus, userId, remarks, ipAddress 
     return { success: false, status: 404, message: 'Local purchase record not found' };
   }
 
+  // Prevent self-approval: the approver cannot be the record creator
+  if ((newStatus === 'Approved' || newStatus === 'Rejected') && purchase.created_by === userId) {
+    return {
+      success: false,
+      status: 403,
+      message: 'You cannot approve or reject your own records'
+    };
+  }
+
   if (!validateTransition(purchase.status, newStatus)) {
     return {
       success: false,

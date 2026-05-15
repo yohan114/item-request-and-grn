@@ -97,17 +97,33 @@ const downloadAttachment = async (req, res, next) => {
     }
 
     const filePath = attachment.file_path;
-    if (!fs.existsSync(filePath)) {
+    const uploadsDir = path.resolve(path.join(__dirname, '..', '..', 'uploads'));
+    const resolvedPath = path.resolve(filePath);
+
+    // Path traversal protection
+    if (!resolvedPath.startsWith(uploadsDir + path.sep) && resolvedPath !== uploadsDir) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied'
+      });
+    }
+
+    if (!fs.existsSync(resolvedPath)) {
       return res.status(404).json({
         success: false,
         message: 'File not found on server'
       });
     }
 
-    res.setHeader('Content-Disposition', `attachment; filename="${attachment.original_name}"`);
+    // Sanitize original_name for Content-Disposition header
+    const sanitizedName = attachment.original_name
+      .replace(/["\\\r\n]/g, '')
+      .replace(/[^\x20-\x7E]/g, '_');
+
+    res.setHeader('Content-Disposition', `attachment; filename="${sanitizedName}"`);
     res.setHeader('Content-Type', attachment.file_type);
 
-    return res.sendFile(path.resolve(filePath));
+    return res.sendFile(resolvedPath);
   } catch (error) {
     next(error);
   }

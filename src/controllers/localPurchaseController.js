@@ -1,7 +1,7 @@
 const { body } = require('express-validator');
 const { Op } = require('sequelize');
 const { LocalPurchase, User, Attachment, ApprovalHistory } = require('../models');
-const { generateMRN, generateGRN, calculateTotalAmount } = require('../services/localPurchaseService');
+const { calculateTotalAmount, createWithRetry } = require('../services/localPurchaseService');
 const { createAuditLog } = require('../utils/auditLogger');
 
 const createValidation = [
@@ -25,8 +25,7 @@ const updateValidation = [
   body('invoice_number').optional({ values: 'falsy' }).trim().isString(),
   body('invoice_date').optional({ values: 'falsy' }).isISO8601().withMessage('Invoice date must be a valid date'),
   body('received_date').optional({ values: 'falsy' }).isISO8601().withMessage('Received date must be a valid date'),
-  body('remarks').optional({ values: 'falsy' }).trim().isLength({ max: 1000 }).withMessage('Remarks must not exceed 1000 characters'),
-  body('status').optional().isIn(['Pending', 'Approved', 'Rejected', 'Completed']).withMessage('Invalid status')
+  body('remarks').optional({ values: 'falsy' }).trim().isLength({ max: 1000 }).withMessage('Remarks must not exceed 1000 characters')
 ];
 
 const create = async (req, res, next) => {
@@ -44,11 +43,9 @@ const create = async (req, res, next) => {
       remarks
     } = req.body;
 
-    const mrn_number = await generateMRN();
-    const grn_number = await generateGRN();
     const total_amount = calculateTotalAmount(quantity, unit_price);
 
-    const purchase = await LocalPurchase.create({
+    const purchase = await createWithRetry({
       supplier_name,
       purchase_category,
       item_name,
@@ -56,8 +53,6 @@ const create = async (req, res, next) => {
       quantity,
       unit_price,
       total_amount,
-      mrn_number,
-      grn_number,
       invoice_number: invoice_number || null,
       invoice_date: invoice_date || null,
       received_date: received_date || null,
@@ -243,7 +238,7 @@ const update = async (req, res, next) => {
     const allowedFields = [
       'supplier_name', 'purchase_category', 'item_name', 'item_description',
       'quantity', 'unit_price', 'invoice_number', 'invoice_date',
-      'received_date', 'remarks', 'status'
+      'received_date', 'remarks'
     ];
 
     for (const field of allowedFields) {
