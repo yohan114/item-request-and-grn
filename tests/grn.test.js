@@ -208,14 +208,14 @@ describe('GRN - List with Pagination', () => {
 
   it('should support status filter', async () => {
     const res = await request(app)
-      .get('/api/grns?status=Pending')
+      .get('/api/grns?status=Submitted')
       .set('Authorization', `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.data.length).toBeGreaterThan(0);
     res.body.data.forEach(record => {
-      expect(record.status).toBe('Pending');
+      expect(record.status).toBe('Submitted');
     });
   });
 });
@@ -351,5 +351,357 @@ describe('GRN - Summary Stats', () => {
     expect(res.body.data.by_status).toBeDefined();
     expect(typeof res.body.data.total).toBe('number');
     expect(res.body.data.total).toBeGreaterThan(0);
+  });
+});
+
+describe('GRN - Full Workflow', () => {
+  let engineerUser, engineerToken;
+  let workflowMRNId, workflowMRNNumber;
+  let receivedItemIds = [];
+  let workflowGRNId;
+
+  beforeAll(async () => {
+    const password = await hashPassword('password123');
+    engineerUser = await User.create({
+      username: 'grn_engineer',
+      email: 'grn_engineer@test.com',
+      password,
+      full_name: 'GRN Engineer',
+      role: 'Engineer',
+      is_active: true
+    });
+    engineerToken = generateToken({ id: engineerUser.id, username: engineerUser.username, role: engineerUser.role });
+
+    // Create MRN with items
+    const mrnRes = await request(app)
+      .post('/api/mrns')
+      .set('Authorization', `Bearer ${storeKeeperToken}`)
+      .send({
+        request_for: 'GRN Workflow Test',
+        items: [
+          { item_name: 'Widget A', description: 'A widget', quantity: 10, unit: 'pcs', remarks: 'Urgent' },
+          { item_name: 'Widget B', description: 'B widget', quantity: 5, unit: 'kg' }
+        ]
+      });
+
+    workflowMRNId = mrnRes.body.data.id;
+    workflowMRNNumber = mrnRes.body.data.mrn_number;
+
+    // Submit the MRN
+    await request(app)
+      .post(`/api/mrns/${workflowMRNId}/submit`)
+      .set('Authorization', `Bearer ${storeKeeperToken}`);
+
+    // Approve the MRN (engineer approves)
+    await request(app)
+      .post(`/api/mrns/${workflowMRNId}/approve`)
+      .set('Authorization', `Bearer ${engineerToken}`)
+      .send({ approval_remarks: 'Looks good' });
+
+    // Create received items for the approved MRN
+    const ri1Res = await request(app)
+      .post('/api/received-items')
+      .set('Authorization', `Bearer ${storeKeeperToken}`)
+      .send({
+        mrn_id: workflowMRNId,
+        mrn_number: workflowMRNNumber,
+        item_details: { item_name: 'Widget A', description: 'A widget', quantity: 10 },
+        received_qty: 10,
+        item_index: 0
+      });
+
+    const ri2Res = await request(app)
+      .post('/api/received-items')
+      .set('Authorization', `Bearer ${storeKeeperToken}`)
+      .send({
+        mrn_id: workflowMRNId,
+        mrn_number: workflowMRNNumber,
+        item_details: { item_name: 'Widget B', description: 'B widget', quantity: 5 },
+        received_qty: 5,
+        item_index: 1
+      });
+
+    receivedItemIds = [ri1Res.body.data.id, ri2Res.body.data.id];
+  });
+
+  it('should create GRN from received items with status=Submitted', async () => {
+    const res = await request(app)
+      .post('/api/grns')
+      .set('Authorization', `Bearer ${storeKeeperToken}`)
+      .send({
+        supplier_name: 'Workflow Supplier',
+        project_name: 'Workflow Project',
+        invoice_number: 'INV-001',
+        items: [
+          { item_name: 'Widget A', description: 'A widget', qty: 10, price: 5 },
+          { item_name: 'Widget B', description: 'B widget', qty: 5, price: 8 }
+        ],
+        mrn_id: workflowMRNId,
+        received_item_ids: receivedItemIds
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.status).toBe('Submitted');
+    expect(res.body.data.mrn_id).toBe(workflowMRNId);
+    workflowGRNId = res.body.data.id;
+  });
+
+  it('should mark received items as GRN Created', async () => {
+    const res = await request(app)
+      .get(`/api/received-items?mrn_id=${workflowMRNId}`)
+      .set('Authorization', `Bearer ${storeKeeperToken}`);
+
+    expect(res.status).toBe(200);
+    const items = res.body.data;
+    const linkedItems = items.filter(i => receivedItemIds.includes(i.id));
+    linkedItems.forEach(item => {
+      expect(item.grn_status).toBe('GRN Created');
+    });
+  });
+
+  it('should approve GRN and update received items to GRN Approved', async () => {
+    const res = await request(app)
+      .post(`/api/grns/${workflowGRNId}/approve`)
+      .set('Authorization', `Bearer ${engineerToken}`)
+      .send({ approval_remarks: 'GRN approved' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.approval_status).toBe('Approved');
+    expect(res.body.data.status).toBe('Approved');
+
+    // Check received items
+    const riRes = await request(app)
+      .get(`/api/received-items?mrn_id=${workflowMRNId}`)
+      .set('Authorization', `Bearer ${storeKeeperToken}`);
+
+    const items = riRes.body.data;
+    const linkedItems = items.filter(i => receivedItemIds.includes(i.id));
+    linkedItems.forEach(item => {
+      expect(item.grn_status).toBe('GRN Approved');
+    });
+  });
+
+  it('should have approval_history after approval', async () => {
+    const res = await request(app)
+      .get(`/api/grns/${workflowGRNId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    const history = res.body.data.approval_history;
+    expect(Array.isArray(history)).toBe(true);
+    expect(history.length).toBeGreaterThan(0);
+    expect(history[0].action).toBe('Approved');
+    expect(history[0].user_name).toBeDefined();
+    expect(history[0].date).toBeDefined();
+  });
+
+  it('should prevent duplicate GRN creation with same received items', async () => {
+    const res = await request(app)
+      .post('/api/grns')
+      .set('Authorization', `Bearer ${storeKeeperToken}`)
+      .send({
+        supplier_name: 'Duplicate Supplier',
+        items: [
+          { item_name: 'Widget A', description: 'A widget', qty: 10, price: 5 }
+        ],
+        mrn_id: workflowMRNId,
+        received_item_ids: receivedItemIds
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+    expect(res.body.message).toContain('already linked');
+  });
+});
+
+describe('GRN - Rejection and Resubmit', () => {
+  let engineerUser2, engineerToken2;
+  let rejectMRNId, rejectReceivedItemIds = [];
+  let rejectedGRNId;
+
+  beforeAll(async () => {
+    const password = await hashPassword('password123');
+    engineerUser2 = await User.create({
+      username: 'grn_engineer2',
+      email: 'grn_engineer2@test.com',
+      password,
+      full_name: 'GRN Engineer 2',
+      role: 'Engineer',
+      is_active: true
+    });
+    engineerToken2 = generateToken({ id: engineerUser2.id, username: engineerUser2.username, role: engineerUser2.role });
+
+    // Create and approve MRN
+    const mrnRes = await request(app)
+      .post('/api/mrns')
+      .set('Authorization', `Bearer ${storeKeeperToken}`)
+      .send({
+        request_for: 'GRN Reject Test',
+        items: [
+          { item_name: 'Gadget X', description: 'A gadget', quantity: 20, unit: 'pcs' }
+        ]
+      });
+    rejectMRNId = mrnRes.body.data.id;
+
+    await request(app)
+      .post(`/api/mrns/${rejectMRNId}/submit`)
+      .set('Authorization', `Bearer ${storeKeeperToken}`);
+
+    await request(app)
+      .post(`/api/mrns/${rejectMRNId}/approve`)
+      .set('Authorization', `Bearer ${engineerToken2}`)
+      .send({ approval_remarks: 'OK' });
+
+    // Create received item
+    const riRes = await request(app)
+      .post('/api/received-items')
+      .set('Authorization', `Bearer ${storeKeeperToken}`)
+      .send({
+        mrn_id: rejectMRNId,
+        item_details: { item_name: 'Gadget X', description: 'A gadget', quantity: 20 },
+        received_qty: 20,
+        item_index: 0
+      });
+    rejectReceivedItemIds = [riRes.body.data.id];
+
+    // Create GRN
+    const grnRes = await request(app)
+      .post('/api/grns')
+      .set('Authorization', `Bearer ${storeKeeperToken}`)
+      .send({
+        supplier_name: 'Reject Supplier',
+        items: [
+          { item_name: 'Gadget X', description: 'A gadget', qty: 20, price: 15 }
+        ],
+        mrn_id: rejectMRNId,
+        received_item_ids: rejectReceivedItemIds
+      });
+    rejectedGRNId = grnRes.body.data.id;
+  });
+
+  it('should reject GRN and revert received items to Pending', async () => {
+    const res = await request(app)
+      .post(`/api/grns/${rejectedGRNId}/reject`)
+      .set('Authorization', `Bearer ${engineerToken2}`)
+      .send({ approval_remarks: 'Missing invoice' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.approval_status).toBe('Rejected');
+    expect(res.body.data.status).toBe('Rejected');
+
+    // Check received items reverted
+    const riRes = await request(app)
+      .get(`/api/received-items?mrn_id=${rejectMRNId}`)
+      .set('Authorization', `Bearer ${storeKeeperToken}`);
+
+    const items = riRes.body.data;
+    items.forEach(item => {
+      expect(item.grn_status).toBe('Pending');
+    });
+  });
+
+  it('should allow editing a rejected GRN (resubmit)', async () => {
+    const res = await request(app)
+      .put(`/api/grns/${rejectedGRNId}`)
+      .set('Authorization', `Bearer ${storeKeeperToken}`)
+      .send({
+        supplier_name: 'Updated Reject Supplier',
+        invoice_number: 'INV-RESUBMIT'
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.supplier_name).toBe('Updated Reject Supplier');
+    expect(res.body.data.status).toBe('Submitted');
+    expect(res.body.data.approval_status).toBe('Pending');
+  });
+});
+
+describe('GRN - MRN Number Filter', () => {
+  let filterMRNId, filterMRNNumber;
+  let filterEngToken;
+
+  beforeAll(async () => {
+    const password = await hashPassword('password123');
+    const filterEng = await User.create({
+      username: 'grn_filter_eng',
+      email: 'grn_filter_eng@test.com',
+      password,
+      full_name: 'GRN Filter Eng',
+      role: 'Engineer',
+      is_active: true
+    });
+    filterEngToken = generateToken({ id: filterEng.id, username: filterEng.username, role: filterEng.role });
+
+    // Create MRN
+    const mrnRes = await request(app)
+      .post('/api/mrns')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        request_for: 'Filter Test',
+        items: [
+          { item_name: 'Filter Item', description: 'For filter test', quantity: 3, unit: 'pcs' }
+        ]
+      });
+    filterMRNId = mrnRes.body.data.id;
+    filterMRNNumber = mrnRes.body.data.mrn_number;
+
+    // Submit and approve
+    await request(app)
+      .post(`/api/mrns/${filterMRNId}/submit`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    await request(app)
+      .post(`/api/mrns/${filterMRNId}/approve`)
+      .set('Authorization', `Bearer ${filterEngToken}`)
+      .send({ approval_remarks: 'OK' });
+
+    // Create received item
+    const riRes = await request(app)
+      .post('/api/received-items')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        mrn_id: filterMRNId,
+        mrn_number: filterMRNNumber,
+        item_details: { item_name: 'Filter Item', description: 'For filter test', quantity: 3 },
+        received_qty: 3,
+        item_index: 0
+      });
+
+    // Create GRN linked to this MRN
+    await request(app)
+      .post('/api/grns')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        supplier_name: 'Filter Supplier',
+        items: [
+          { item_name: 'Filter Item', description: 'For filter test', qty: 3, price: 10 }
+        ],
+        mrn_id: filterMRNId,
+        received_item_ids: [riRes.body.data.id]
+      });
+  });
+
+  it('should filter GRN list by mrn_number', async () => {
+    const res = await request(app)
+      .get(`/api/grns?mrn_number=${filterMRNNumber}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.length).toBeGreaterThan(0);
+    res.body.data.forEach(grn => {
+      expect(grn.mrn_id).toBe(filterMRNId);
+    });
+  });
+
+  it('should return empty results for non-existent mrn_number', async () => {
+    const res = await request(app)
+      .get('/api/grns?mrn_number=NON-EXISTENT-MRN')
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.length).toBe(0);
   });
 });

@@ -297,3 +297,376 @@ describe('MRN - Summary Stats', () => {
     expect(res.body.data.total).toBeGreaterThan(0);
   });
 });
+
+describe('MRN - Submit', () => {
+  let submitMRNId;
+
+  beforeAll(async () => {
+    const res = await request(app)
+      .post('/api/mrns')
+      .set('Authorization', `Bearer ${storeKeeperToken}`)
+      .send({
+        request_for: 'Submit Test',
+        items: [
+          { item_name: 'Submit Item', description: 'For submit test', quantity: 5, unit: 'pcs' }
+        ]
+      });
+    submitMRNId = res.body.data.id;
+  });
+
+  it('should submit a Draft MRN successfully', async () => {
+    const res = await request(app)
+      .post(`/api/mrns/${submitMRNId}/submit`)
+      .set('Authorization', `Bearer ${storeKeeperToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.status).toBe('Submitted');
+  });
+
+  it('should reject submitting a non-Draft MRN', async () => {
+    const res = await request(app)
+      .post(`/api/mrns/${submitMRNId}/submit`)
+      .set('Authorization', `Bearer ${storeKeeperToken}`);
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+    expect(res.body.message).toContain('Draft');
+  });
+
+  it('should reject submit by a Store Keeper who is not the creator', async () => {
+    // Create another store keeper
+    const password = await hashPassword('password123');
+    const otherSK = await User.create({
+      username: 'mrn_other_sk',
+      email: 'mrn_other_sk@test.com',
+      password,
+      full_name: 'Other SK',
+      role: 'Store Keeper',
+      is_active: true
+    });
+    const otherSKToken = generateToken({ id: otherSK.id, username: otherSK.username, role: otherSK.role });
+
+    // Create a new Draft MRN by original store keeper
+    const createRes = await request(app)
+      .post('/api/mrns')
+      .set('Authorization', `Bearer ${storeKeeperToken}`)
+      .send({
+        request_for: 'Other SK Test',
+        items: [
+          { item_name: 'Test Item', description: 'Desc', quantity: 1 }
+        ]
+      });
+
+    const res = await request(app)
+      .post(`/api/mrns/${createRes.body.data.id}/submit`)
+      .set('Authorization', `Bearer ${otherSKToken}`);
+
+    expect(res.status).toBe(403);
+  });
+
+  it('should allow Admin to submit any MRN', async () => {
+    const createRes = await request(app)
+      .post('/api/mrns')
+      .set('Authorization', `Bearer ${storeKeeperToken}`)
+      .send({
+        request_for: 'Admin Submit Test',
+        items: [
+          { item_name: 'Admin Item', description: 'Desc', quantity: 2 }
+        ]
+      });
+
+    const res = await request(app)
+      .post(`/api/mrns/${createRes.body.data.id}/submit`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.status).toBe('Submitted');
+  });
+});
+
+describe('MRN - Approval Flow', () => {
+  let engineerUser, engineerToken;
+  let approvalMRNId;
+
+  beforeAll(async () => {
+    const password = await hashPassword('password123');
+    engineerUser = await User.create({
+      username: 'mrn_engineer',
+      email: 'mrn_engineer@test.com',
+      password,
+      full_name: 'MRN Engineer',
+      role: 'Engineer',
+      is_active: true
+    });
+    engineerToken = generateToken({ id: engineerUser.id, username: engineerUser.username, role: engineerUser.role });
+  });
+
+  it('should approve a submitted MRN and set items to Approved', async () => {
+    // Create MRN
+    const createRes = await request(app)
+      .post('/api/mrns')
+      .set('Authorization', `Bearer ${storeKeeperToken}`)
+      .send({
+        request_for: 'Approval Test',
+        items: [
+          { item_name: 'Approve Item 1', description: 'Desc 1', quantity: 10, unit: 'pcs' },
+          { item_name: 'Approve Item 2', description: 'Desc 2', quantity: 5, unit: 'kg', remarks: 'Handle with care' }
+        ],
+        supplier_name: 'Test Supplier',
+        project_name: 'Test Project'
+      });
+    approvalMRNId = createRes.body.data.id;
+
+    // Submit
+    await request(app)
+      .post(`/api/mrns/${approvalMRNId}/submit`)
+      .set('Authorization', `Bearer ${storeKeeperToken}`);
+
+    // Approve
+    const res = await request(app)
+      .post(`/api/mrns/${approvalMRNId}/approve`)
+      .set('Authorization', `Bearer ${engineerToken}`)
+      .send({ approval_remarks: 'All good' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.approval_status).toBe('Approved');
+    expect(res.body.data.status).toBe('Approved');
+
+    // Check items have item_status='Approved'
+    const getRes = await request(app)
+      .get(`/api/mrns/${approvalMRNId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    const items = getRes.body.data.items;
+    items.forEach(item => {
+      expect(item.item_status).toBe('Approved');
+    });
+  });
+
+  it('should populate approval_history after approval', async () => {
+    const res = await request(app)
+      .get(`/api/mrns/${approvalMRNId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    const history = res.body.data.approval_history;
+    expect(Array.isArray(history)).toBe(true);
+    expect(history.length).toBe(1);
+    expect(history[0].action).toBe('Approved');
+    expect(history[0].user_name).toBe('MRN Engineer');
+    expect(history[0].date).toBeDefined();
+    expect(history[0].remarks).toBe('All good');
+  });
+
+  it('should reject a submitted MRN and return to Draft', async () => {
+    // Create and submit a new MRN
+    const createRes = await request(app)
+      .post('/api/mrns')
+      .set('Authorization', `Bearer ${storeKeeperToken}`)
+      .send({
+        request_for: 'Reject Test',
+        items: [
+          { item_name: 'Reject Item', description: 'To be rejected', quantity: 3 }
+        ]
+      });
+    const rejectMRNId = createRes.body.data.id;
+
+    await request(app)
+      .post(`/api/mrns/${rejectMRNId}/submit`)
+      .set('Authorization', `Bearer ${storeKeeperToken}`);
+
+    // Reject
+    const res = await request(app)
+      .post(`/api/mrns/${rejectMRNId}/reject`)
+      .set('Authorization', `Bearer ${engineerToken}`)
+      .send({ approval_remarks: 'Quantities are wrong' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.approval_status).toBe('Rejected');
+    expect(res.body.data.status).toBe('Draft');
+
+    // Check approval_history has rejection entry
+    const getRes = await request(app)
+      .get(`/api/mrns/${rejectMRNId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    const history = getRes.body.data.approval_history;
+    expect(history.length).toBe(1);
+    expect(history[0].action).toBe('Rejected');
+    expect(history[0].remarks).toBe('Quantities are wrong');
+  });
+
+  it('should allow editing and resubmitting a rejected MRN', async () => {
+    // Create, submit, then reject
+    const createRes = await request(app)
+      .post('/api/mrns')
+      .set('Authorization', `Bearer ${storeKeeperToken}`)
+      .send({
+        request_for: 'Resubmit Test',
+        items: [
+          { item_name: 'Resubmit Item', description: 'Original', quantity: 2 }
+        ]
+      });
+    const resubmitMRNId = createRes.body.data.id;
+
+    await request(app)
+      .post(`/api/mrns/${resubmitMRNId}/submit`)
+      .set('Authorization', `Bearer ${storeKeeperToken}`);
+
+    await request(app)
+      .post(`/api/mrns/${resubmitMRNId}/reject`)
+      .set('Authorization', `Bearer ${engineerToken}`)
+      .send({ approval_remarks: 'Fix description' });
+
+    // Edit the rejected MRN
+    const editRes = await request(app)
+      .put(`/api/mrns/${resubmitMRNId}`)
+      .set('Authorization', `Bearer ${storeKeeperToken}`)
+      .send({
+        items: [
+          { item_name: 'Resubmit Item', description: 'Updated description', quantity: 3 }
+        ]
+      });
+
+    expect(editRes.status).toBe(200);
+
+    // Resubmit
+    const submitRes = await request(app)
+      .post(`/api/mrns/${resubmitMRNId}/submit`)
+      .set('Authorization', `Bearer ${storeKeeperToken}`);
+
+    expect(submitRes.status).toBe(200);
+    expect(submitRes.body.data.status).toBe('Submitted');
+  });
+
+  it('should not allow editing an approved MRN', async () => {
+    const res = await request(app)
+      .put(`/api/mrns/${approvalMRNId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        request_for: 'Should Fail'
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+    expect(res.body.message).toContain('approved');
+  });
+
+  it('should not allow SK to approve their own MRN', async () => {
+    // SK cannot approve because they are not in the authorize list for approve
+    // But even if they had access, self-approval is blocked
+    // Create MRN by admin
+    const createRes = await request(app)
+      .post('/api/mrns')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        request_for: 'Self Approve Test',
+        items: [
+          { item_name: 'Self Item', description: 'Self test', quantity: 1 }
+        ]
+      });
+    const selfMRNId = createRes.body.data.id;
+
+    await request(app)
+      .post(`/api/mrns/${selfMRNId}/submit`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    // Admin trying to approve their own record
+    const res = await request(app)
+      .post(`/api/mrns/${selfMRNId}/approve`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ approval_remarks: 'Self approve' });
+
+    expect(res.status).toBe(403);
+    expect(res.body.message).toContain('own record');
+  });
+
+  it('should allow Engineer to approve MRN', async () => {
+    const createRes = await request(app)
+      .post('/api/mrns')
+      .set('Authorization', `Bearer ${storeKeeperToken}`)
+      .send({
+        request_for: 'Engineer Approve',
+        items: [
+          { item_name: 'Eng Item', description: 'Eng test', quantity: 7 }
+        ]
+      });
+    const engMRNId = createRes.body.data.id;
+
+    await request(app)
+      .post(`/api/mrns/${engMRNId}/submit`)
+      .set('Authorization', `Bearer ${storeKeeperToken}`);
+
+    const res = await request(app)
+      .post(`/api/mrns/${engMRNId}/approve`)
+      .set('Authorization', `Bearer ${engineerToken}`)
+      .send({ approval_remarks: 'Engineer approves' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.approval_status).toBe('Approved');
+  });
+
+  it('should require remarks for rejection', async () => {
+    const createRes = await request(app)
+      .post('/api/mrns')
+      .set('Authorization', `Bearer ${storeKeeperToken}`)
+      .send({
+        request_for: 'Reject No Remarks',
+        items: [
+          { item_name: 'No Remarks Item', description: 'Test', quantity: 1 }
+        ]
+      });
+    const noRemarksMRNId = createRes.body.data.id;
+
+    await request(app)
+      .post(`/api/mrns/${noRemarksMRNId}/submit`)
+      .set('Authorization', `Bearer ${storeKeeperToken}`);
+
+    const res = await request(app)
+      .post(`/api/mrns/${noRemarksMRNId}/reject`)
+      .set('Authorization', `Bearer ${engineerToken}`)
+      .send({});
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain('required');
+  });
+});
+
+describe('MRN - New Item Fields', () => {
+  it('should create MRN with new item fields (item_name, quantity, unit, remarks)', async () => {
+    const res = await request(app)
+      .post('/api/mrns')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        request_for: 'New Fields Test',
+        items: [
+          { item_name: 'New Widget', description: 'A new widget', quantity: 15, unit: 'pcs', remarks: 'Priority' }
+        ],
+        supplier_name: 'Acme Corp',
+        project_name: 'Project X'
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.data.items[0].item_name).toBe('New Widget');
+    expect(res.body.data.items[0].quantity).toBe(15);
+    expect(res.body.data.items[0].unit).toBe('pcs');
+    expect(res.body.data.items[0].remarks).toBe('Priority');
+    expect(res.body.data.items[0].item_status).toBe('Pending Approval');
+  });
+
+  it('should still support backward compatible item fields (item_no, qty)', async () => {
+    const res = await request(app)
+      .post('/api/mrns')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        request_for: 'Compat Fields Test',
+        items: [
+          { item_no: 'ITEM-001', description: 'Legacy item', qty: 8 }
+        ]
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.data.items[0].item_no).toBe('ITEM-001');
+    expect(res.body.data.items[0].qty).toBe(8);
+  });
+});
