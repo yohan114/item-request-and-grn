@@ -1,6 +1,6 @@
 const { body } = require('express-validator');
 const { Op } = require('sequelize');
-const { GRN, MRN, User, Attachment } = require('../models');
+const { GRN, User, Attachment } = require('../models');
 const { createGRNWithRetry } = require('../services/grnService');
 const { createAuditLog } = require('../utils/auditLogger');
 
@@ -22,25 +22,6 @@ const updateValidation = [
   body('supplier_name').optional().trim().notEmpty().withMessage('Supplier name cannot be empty'),
   body('project_name').optional({ values: 'falsy' }).trim(),
   body('items').optional().isArray({ min: 1 }).withMessage('Items must be a non-empty array'),
-  body('items').optional().custom((items) => {
-    if (!Array.isArray(items)) return true;
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      if (!item.item_no || (typeof item.item_no === 'string' && !item.item_no.trim())) {
-        throw new Error(`Item ${i + 1} must have an item number`);
-      }
-      if (!item.description || (typeof item.description === 'string' && !item.description.trim())) {
-        throw new Error(`Item ${i + 1} must have a description`);
-      }
-      if (item.qty === undefined || item.qty === null || isNaN(item.qty) || parseFloat(item.qty) <= 0) {
-        throw new Error(`Item ${i + 1} must have a quantity greater than 0`);
-      }
-      if (item.price === undefined || item.price === null || isNaN(item.price) || parseFloat(item.price) < 0) {
-        throw new Error(`Item ${i + 1} must have a price of 0 or more`);
-      }
-    }
-    return true;
-  }),
   body('items.*.item_no').trim().notEmpty().withMessage('Each item must have an item number'),
   body('items.*.description').trim().notEmpty().withMessage('Each item must have a description'),
   body('items.*.qty').isFloat({ gt: 0 }).withMessage('Each item must have a quantity greater than 0'),
@@ -106,8 +87,7 @@ const list = async (req, res, next) => {
       limit = 10,
       grn_number,
       supplier_name,
-      status,
-      mrn_id
+      status
     } = req.query;
 
     const pageNum = parseInt(page, 10);
@@ -125,9 +105,6 @@ const list = async (req, res, next) => {
     if (status) {
       where.status = status;
     }
-    if (mrn_id) {
-      where.mrn_id = mrn_id;
-    }
 
     const { count, rows } = await GRN.findAndCountAll({
       where,
@@ -136,11 +113,6 @@ const list = async (req, res, next) => {
           model: User,
           as: 'grnCreator',
           attributes: ['id', 'username', 'full_name']
-        },
-        {
-          model: MRN,
-          as: 'mrn',
-          attributes: ['id', 'mrn_number', 'request_for']
         }
       ],
       order: [['created_at', 'DESC']],
@@ -173,10 +145,6 @@ const getById = async (req, res, next) => {
           model: User,
           as: 'grnCreator',
           attributes: ['id', 'username', 'full_name']
-        },
-        {
-          model: MRN,
-          as: 'mrn'
         },
         {
           model: Attachment,
