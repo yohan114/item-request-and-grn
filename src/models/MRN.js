@@ -16,6 +16,14 @@ module.exports = (sequelize) => {
       type: DataTypes.STRING,
       allowNull: false
     },
+    supplier_name: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
+    project_name: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
     items: {
       type: DataTypes.TEXT,
       allowNull: false,
@@ -49,7 +57,7 @@ module.exports = (sequelize) => {
       allowNull: true
     },
     status: {
-      type: DataTypes.ENUM('Draft', 'Submitted', 'Purchased', 'Delivered', 'Completed'),
+      type: DataTypes.ENUM('Draft', 'Submitted', 'Approved', 'Received Pending', 'Partially Received', 'Fully Received', 'Closed'),
       defaultValue: 'Draft'
     },
     approval_status: {
@@ -63,6 +71,22 @@ module.exports = (sequelize) => {
     approval_remarks: {
       type: DataTypes.TEXT,
       allowNull: true
+    },
+    approval_history: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      get() {
+        const rawValue = this.getDataValue('approval_history');
+        if (!rawValue) return [];
+        try {
+          return JSON.parse(rawValue);
+        } catch (e) {
+          return [];
+        }
+      },
+      set(value) {
+        this.setDataValue('approval_history', typeof value === 'string' ? value : JSON.stringify(value));
+      }
     },
     created_by: {
       type: DataTypes.UUID,

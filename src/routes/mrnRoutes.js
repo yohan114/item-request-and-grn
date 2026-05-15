@@ -8,6 +8,7 @@ const {
   list,
   getById,
   update,
+  submit,
   remove,
   approveMRN,
   rejectMRN,
@@ -46,6 +47,13 @@ router.get(
   '/:id',
   authorize('Admin', 'Manager', 'Engineer', 'Store Keeper', 'Viewer'),
   getById
+);
+
+// POST /api/mrns/:id/submit - Submit MRN (Store Keeper, Manager, Admin)
+router.post(
+  '/:id/submit',
+  authorize('Store Keeper', 'Manager', 'Admin'),
+  submit
 );
 
 // POST /api/mrns/:id/approve - Approve MRN (Engineer, Manager, Admin)

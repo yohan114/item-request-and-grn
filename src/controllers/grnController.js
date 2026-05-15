@@ -3,15 +3,31 @@ const { Op } = require('sequelize');
 const { GRN, User, Attachment, ReceivedItem, MRN } = require('../models');
 const { createGRNWithRetry } = require('../services/grnService');
 const { createAuditLog } = require('../utils/auditLogger');
+const { parseItems, getItemIdentifier } = require('../utils/pendingItemsHelper');
 
 const createValidation = [
   body('supplier_name').trim().notEmpty().withMessage('Supplier name is required'),
   body('project_name').optional({ values: 'falsy' }).trim(),
+  body('invoice_number').optional({ values: 'falsy' }).trim(),
   body('items').isArray({ min: 1 }).withMessage('Items must be a non-empty array'),
-  body('items.*.item_no').trim().notEmpty().withMessage('Each item must have an item number'),
+  body('items.*.item_no').optional().trim(),
+  body('items.*.item_name').optional().trim(),
   body('items.*.description').trim().notEmpty().withMessage('Each item must have a description'),
-  body('items.*.qty').isFloat({ gt: 0 }).withMessage('Each item must have a quantity greater than 0'),
-  body('items.*.price').isFloat({ min: 0 }).withMessage('Each item must have a price of 0 or more'),
+  body('items').custom((items) => {
+    if (!Array.isArray(items)) return true;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      const itemName = item.item_name || item.item_no;
+      if (!itemName || (typeof itemName === 'string' && !itemName.trim())) {
+        throw new Error(`Item ${i + 1} must have an item name or item number`);
+      }
+      const qty = item.quantity !== undefined ? item.quantity : item.qty;
+      if (qty === undefined || qty === null || isNaN(qty) || parseFloat(qty) <= 0) {
+        throw new Error(`Item ${i + 1} must have a quantity greater than 0`);
+      }
+    }
+    return true;
+  }),
   body('request_person_name').optional({ values: 'falsy' }).trim(),
   body('request_person_designation').optional({ values: 'falsy' }).trim(),
   body('approval_person_name').optional({ values: 'falsy' }).trim(),
@@ -21,11 +37,11 @@ const createValidation = [
 const updateValidation = [
   body('supplier_name').optional().trim().notEmpty().withMessage('Supplier name cannot be empty'),
   body('project_name').optional({ values: 'falsy' }).trim(),
+  body('invoice_number').optional({ values: 'falsy' }).trim(),
   body('items').optional().isArray({ min: 1 }).withMessage('Items must be a non-empty array'),
-  body('items.*.item_no').trim().notEmpty().withMessage('Each item must have an item number'),
-  body('items.*.description').trim().notEmpty().withMessage('Each item must have a description'),
-  body('items.*.qty').isFloat({ gt: 0 }).withMessage('Each item must have a quantity greater than 0'),
-  body('items.*.price').isFloat({ min: 0 }).withMessage('Each item must have a price of 0 or more'),
+  body('items.*.item_no').optional().trim(),
+  body('items.*.item_name').optional().trim(),
+  body('items.*.description').optional().trim().notEmpty().withMessage('Each item must have a description'),
   body('request_person_name').optional({ values: 'falsy' }).trim(),
   body('request_person_designation').optional({ values: 'falsy' }).trim(),
   body('approval_person_name').optional({ values: 'falsy' }).trim(),
@@ -37,6 +53,7 @@ const create = async (req, res, next) => {
     const {
       supplier_name,
       project_name,
+      invoice_number,
       items,
       request_person_name,
       request_person_designation,
@@ -49,11 +66,13 @@ const create = async (req, res, next) => {
     const grnData = {
       supplier_name,
       project_name: project_name || null,
+      invoice_number: invoice_number || null,
       items,
       request_person_name: request_person_name || null,
       request_person_designation: request_person_designation || null,
       approval_person_name: approval_person_name || null,
       approval_person_designation: approval_person_designation || null,
+      status: 'Submitted',
       created_by: req.user.id
     };
 
@@ -161,7 +180,8 @@ const list = async (req, res, next) => {
       grn_number,
       supplier_name,
       status,
-      approval_status
+      approval_status,
+      mrn_number
     } = req.query;
 
     const pageNum = parseInt(page, 10);
@@ -181,6 +201,30 @@ const list = async (req, res, next) => {
     }
     if (approval_status) {
       where.approval_status = approval_status;
+    }
+
+    // Filter by mrn_number: look up the MRN ID first
+    if (mrn_number) {
+      const matchingMrns = await MRN.findAll({
+        where: { mrn_number: { [Op.like]: `%${mrn_number}%` } },
+        attributes: ['id']
+      });
+      const mrnIds = matchingMrns.map(m => m.id);
+      if (mrnIds.length > 0) {
+        where.mrn_id = { [Op.in]: mrnIds };
+      } else {
+        // No matching MRNs, return empty result
+        return res.json({
+          success: true,
+          data: [],
+          pagination: {
+            total: 0,
+            page: pageNum,
+            limit: limitNum,
+            total_pages: 0
+          }
+        });
+      }
     }
 
     const { count, rows } = await GRN.findAndCountAll({
@@ -288,9 +332,9 @@ const update = async (req, res, next) => {
 
     const updateData = {};
     const allowedFields = [
-      'supplier_name', 'project_name', 'items',
+      'supplier_name', 'project_name', 'invoice_number', 'items',
       'request_person_name', 'request_person_designation',
-      'approval_person_name', 'approval_person_designation', 'status'
+      'approval_person_name', 'approval_person_designation'
     ];
 
     for (const field of allowedFields) {
@@ -302,6 +346,12 @@ const update = async (req, res, next) => {
     // Handle invoice attachment file
     if (req.file) {
       updateData.invoice_attachment = req.file.filename;
+    }
+
+    // If GRN was rejected, on edit reset to Submitted/Pending for re-approval
+    if (grn.approval_status === 'Rejected') {
+      updateData.status = 'Submitted';
+      updateData.approval_status = 'Pending';
     }
 
     await grn.update(updateData);
@@ -391,10 +441,23 @@ const approveGRN = async (req, res, next) => {
 
     const oldValues = grn.toJSON();
 
+    // Build approval history entry
+    const approvalHistoryEntry = {
+      action: 'Approved',
+      user_id: req.user.id,
+      user_name: req.user.full_name || req.user.username,
+      date: new Date().toISOString(),
+      remarks: approval_remarks || null
+    };
+
+    const currentHistory = grn.approval_history || [];
+
     await grn.update({
       approval_status: 'Approved',
+      status: 'Approved',
       approved_by: req.user.id,
-      approval_remarks: approval_remarks || null
+      approval_remarks: approval_remarks || null,
+      approval_history: [...currentHistory, approvalHistoryEntry]
     });
 
     // Update all linked received items to 'GRN Approved'
@@ -402,6 +465,34 @@ const approveGRN = async (req, res, next) => {
       { grn_status: 'GRN Approved' },
       { where: { grn_id: grn.id } }
     );
+
+    // Update corresponding MRN item_status to 'GRN Completed' for the received items
+    if (grn.mrn_id) {
+      try {
+        const mrnRecord = await MRN.findByPk(grn.mrn_id);
+        if (mrnRecord) {
+          const linkedReceivedItems = await ReceivedItem.findAll({
+            where: { grn_id: grn.id }
+          });
+          const mrnItems = parseItems(mrnRecord.items);
+          const updatedItems = mrnItems.map((item, index) => {
+            const itemId = getItemIdentifier(item);
+            // Check if any of the linked received items correspond to this MRN item
+            const hasLinkedRI = linkedReceivedItems.some(ri => {
+              const riDetails = typeof ri.item_details === 'string' ? JSON.parse(ri.item_details) : ri.item_details;
+              return getItemIdentifier(riDetails || {}) === itemId || ri.item_index === index;
+            });
+            if (hasLinkedRI) {
+              return { ...item, item_status: 'GRN Completed' };
+            }
+            return item;
+          });
+          await mrnRecord.update({ items: updatedItems });
+        }
+      } catch (mrnUpdateErr) {
+        console.error('Failed to update MRN item statuses after GRN approval:', mrnUpdateErr);
+      }
+    }
 
     await createAuditLog({
       user_id: req.user.id,
@@ -453,10 +544,23 @@ const rejectGRN = async (req, res, next) => {
 
     const oldValues = grn.toJSON();
 
+    // Build approval history entry
+    const approvalHistoryEntry = {
+      action: 'Rejected',
+      user_id: req.user.id,
+      user_name: req.user.full_name || req.user.username,
+      date: new Date().toISOString(),
+      remarks: approval_remarks || null
+    };
+
+    const currentHistory = grn.approval_history || [];
+
     await grn.update({
       approval_status: 'Rejected',
+      status: 'Rejected',
       approved_by: req.user.id,
-      approval_remarks: approval_remarks || null
+      approval_remarks: approval_remarks || null,
+      approval_history: [...currentHistory, approvalHistoryEntry]
     });
 
     // Revert linked received items so they can be re-linked to a new GRN

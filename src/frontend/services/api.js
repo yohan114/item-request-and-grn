@@ -102,6 +102,7 @@ export const mrnAPI = {
   create: (data) => api.post('/mrns', data),
   update: (id, data) => api.put(`/mrns/${id}`, data),
   delete: (id) => api.delete(`/mrns/${id}`),
+  submit: (id) => api.post(`/mrns/${id}/submit`),
   approve: (id, data) => api.post(`/mrns/${id}/approve`, data),
   reject: (id, data) => api.post(`/mrns/${id}/reject`, data),
   getPendingItems: (id) => api.get(`/mrns/${id}/pending-items`)
@@ -129,7 +130,15 @@ export const grnAPI = {
   },
   delete: (id) => api.delete(`/grns/${id}`),
   approve: (id, data) => api.post(`/grns/${id}/approve`, data),
-  reject: (id, data) => api.post(`/grns/${id}/reject`, data)
+  reject: (id, data) => api.post(`/grns/${id}/reject`, data),
+  resubmit: (id, data) => {
+    if (data instanceof FormData) {
+      return api.put(`/grns/${id}`, data, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+    }
+    return api.put(`/grns/${id}`, data);
+  }
 };
 
 // MRN Attachments API

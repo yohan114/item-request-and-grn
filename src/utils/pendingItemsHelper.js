@@ -30,32 +30,59 @@ function parseItemDetails(itemDetails) {
 }
 
 /**
+ * Get the item identifier from an item object.
+ * Supports both item_name (new) and item_no (legacy) field names.
+ * @param {object} item
+ * @returns {string}
+ */
+function getItemIdentifier(item) {
+  return item.item_name || item.item_no || '';
+}
+
+/**
+ * Get the item quantity from an item object.
+ * Supports both quantity (new) and qty (legacy) field names.
+ * @param {object} item
+ * @returns {number}
+ */
+function getItemQuantity(item) {
+  const val = item.quantity !== undefined ? item.quantity : item.qty;
+  return parseFloat(val) || 0;
+}
+
+/**
  * Computes pending items with remaining quantities.
  *
  * @param {Array} mrnItems - The MRN items array (parsed or raw JSON string).
  * @param {Array} receivedItems - Array of ReceivedItem model instances or plain objects.
- * @returns {Array} Array of pending items with { item_no, description, qty, total_received, remaining_qty }.
+ * @returns {Array} Array of pending items with { item_name, item_no, description, quantity, qty, total_received, remaining_qty }.
  */
 function computePendingItems(mrnItems, receivedItems) {
   const items = parseItems(mrnItems);
   const pendingItems = [];
 
   for (const item of items) {
+    const itemId = getItemIdentifier(item);
+    const itemQty = getItemQuantity(item);
     let totalReceived = 0;
     for (const ri of receivedItems) {
       const itemDetails = parseItemDetails(ri.item_details);
-      if (itemDetails && itemDetails.item_no === item.item_no) {
+      const riItemId = getItemIdentifier(itemDetails);
+      if (riItemId && riItemId === itemId) {
         totalReceived += parseFloat(ri.received_qty) || 0;
       }
     }
-    const remainingQty = parseFloat(item.qty) - totalReceived;
+    const remainingQty = itemQty - totalReceived;
     if (remainingQty > 0) {
       pendingItems.push({
-        item_no: item.item_no,
+        item_name: itemId,
+        item_no: itemId,
         description: item.description,
-        qty: parseFloat(item.qty),
+        quantity: itemQty,
+        qty: itemQty,
         total_received: totalReceived,
-        remaining_qty: remainingQty
+        remaining_qty: remainingQty,
+        item_status: item.item_status || 'Pending Approval'
       });
     }
   }
@@ -75,14 +102,17 @@ function allItemsReceived(mrnItems, receivedItems) {
   if (items.length === 0) return false;
 
   for (const item of items) {
+    const itemId = getItemIdentifier(item);
+    const itemQty = getItemQuantity(item);
     let totalReceived = 0;
     for (const ri of receivedItems) {
       const itemDetails = parseItemDetails(ri.item_details);
-      if (itemDetails && itemDetails.item_no === item.item_no) {
+      const riItemId = getItemIdentifier(itemDetails);
+      if (riItemId && riItemId === itemId) {
         totalReceived += parseFloat(ri.received_qty) || 0;
       }
     }
-    if (totalReceived < parseFloat(item.qty)) {
+    if (totalReceived < itemQty) {
       return false;
     }
   }
@@ -90,9 +120,51 @@ function allItemsReceived(mrnItems, receivedItems) {
   return true;
 }
 
+/**
+ * Computes per-item statuses based on received quantities and current item status.
+ *
+ * @param {Array} mrnItems - The MRN items array (parsed or raw JSON string).
+ * @param {Array} receivedItems - Array of ReceivedItem model instances or plain objects.
+ * @returns {Array} Array of items with computed item_status ('Partially Received', 'Fully Received', or unchanged).
+ */
+function computeItemStatuses(mrnItems, receivedItems) {
+  const items = parseItems(mrnItems);
+
+  return items.map(item => {
+    const itemId = getItemIdentifier(item);
+    const itemQty = getItemQuantity(item);
+    let totalReceived = 0;
+    for (const ri of receivedItems) {
+      const itemDetails = parseItemDetails(ri.item_details);
+      const riItemId = getItemIdentifier(itemDetails);
+      if (riItemId && riItemId === itemId) {
+        totalReceived += parseFloat(ri.received_qty) || 0;
+      }
+    }
+
+    let itemStatus = item.item_status || 'Pending Approval';
+    // Only update status for items that are already Approved or in receiving flow
+    if (itemStatus === 'Approved' || itemStatus === 'Partially Received' || itemStatus === 'Fully Received') {
+      if (totalReceived >= itemQty) {
+        itemStatus = 'Fully Received';
+      } else if (totalReceived > 0) {
+        itemStatus = 'Partially Received';
+      }
+    }
+
+    return {
+      ...item,
+      item_status: itemStatus
+    };
+  });
+}
+
 module.exports = {
   parseItems,
   parseItemDetails,
+  getItemIdentifier,
+  getItemQuantity,
   computePendingItems,
-  allItemsReceived
+  allItemsReceived,
+  computeItemStatuses
 };

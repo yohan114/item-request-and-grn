@@ -5,7 +5,7 @@ const { Op } = require('sequelize');
 const { ReceivedItem, User, MRN } = require('../models');
 const { createReceivedItemWithRetry } = require('../services/receivedItemService');
 const { createAuditLog } = require('../utils/auditLogger');
-const { allItemsReceived } = require('../utils/pendingItemsHelper');
+const { allItemsReceived, computeItemStatuses, parseItems, getItemIdentifier, getItemQuantity } = require('../utils/pendingItemsHelper');
 
 const uploadsDir = path.join(__dirname, '..', '..', 'uploads');
 
@@ -28,6 +28,7 @@ const create = async (req, res, next) => {
       mrn_number,
       item_details,
       received_qty,
+      item_index,
       notes
     } = req.body;
 
@@ -44,11 +45,26 @@ const create = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Referenced MRN not found' });
     }
 
+    // Validate that MRN is approved before receiving items
+    if (mrn.approval_status !== 'Approved') {
+      if (req.file) {
+        const filePath = path.join(uploadsDir, req.file.filename);
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      }
+      return res.status(400).json({
+        success: false,
+        message: 'Can only receive items for approved MRNs'
+      });
+    }
+
     const receivedItemData = {
       mrn_id,
       mrn_number: mrn_number || null,
       item_details,
       received_qty: parseFloat(received_qty),
+      item_index: item_index !== undefined ? parseInt(item_index, 10) : null,
       notes: notes || null,
       created_by: req.user.id
     };
@@ -69,21 +85,54 @@ const create = async (req, res, next) => {
       ip_address: req.ip
     });
 
-    // Check if all MRN items have been fully received (auto-close)
+    // Update MRN item statuses and overall status
     let mrnAutoClosed = false;
     try {
       const mrnRecord = await MRN.findByPk(mrn_id);
-      if (mrnRecord && mrnRecord.status !== 'Completed') {
+      if (mrnRecord && mrnRecord.status !== 'Closed') {
         const allReceivedItems = await ReceivedItem.findAll({ where: { mrn_id } });
+
+        // Compute per-item statuses
+        const updatedItems = computeItemStatuses(mrnRecord.items, allReceivedItems);
+        const updateData = { items: updatedItems };
+
         if (allItemsReceived(mrnRecord.items, allReceivedItems)) {
-          await mrnRecord.update({ status: 'Completed' });
+          updateData.status = 'Closed';
           mrnAutoClosed = true;
+        } else {
+          // Check if any items have been received
+          const items = parseItems(mrnRecord.items);
+          let anyReceived = false;
+          for (const item of items) {
+            const itemId = getItemIdentifier(item);
+            const itemQty = getItemQuantity(item);
+            let totalReceived = 0;
+            for (const ri of allReceivedItems) {
+              const riDetails = typeof ri.item_details === 'string' ? JSON.parse(ri.item_details) : ri.item_details;
+              const riItemId = getItemIdentifier(riDetails || {});
+              if (riItemId && riItemId === itemId) {
+                totalReceived += parseFloat(ri.received_qty) || 0;
+              }
+            }
+            if (totalReceived > 0) {
+              anyReceived = true;
+              break;
+            }
+          }
+          if (anyReceived) {
+            updateData.status = 'Partially Received';
+          }
+        }
+
+        await mrnRecord.update(updateData);
+
+        if (mrnAutoClosed) {
           await createAuditLog({
             user_id: req.user.id,
             action: 'AUTO_CLOSE',
             entity_type: 'MRN',
             entity_id: mrnRecord.id,
-            new_values: { status: 'Completed', reason: 'All items received' },
+            new_values: { status: 'Closed', reason: 'All items received' },
             ip_address: req.ip
           });
         }
@@ -231,7 +280,7 @@ const update = async (req, res, next) => {
 
     const updateData = {};
     const allowedFields = [
-      'item_details', 'received_qty', 'notes', 'status'
+      'item_details', 'received_qty', 'notes', 'status', 'item_index'
     ];
 
     for (const field of allowedFields) {

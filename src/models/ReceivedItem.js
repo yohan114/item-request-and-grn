@@ -20,6 +20,10 @@ module.exports = (sequelize) => {
       type: DataTypes.STRING,
       allowNull: true
     },
+    item_index: {
+      type: DataTypes.INTEGER,
+      allowNull: true
+    },
     item_details: {
       type: DataTypes.TEXT,
       allowNull: false,
@@ -39,6 +43,10 @@ module.exports = (sequelize) => {
     received_qty: {
       type: DataTypes.FLOAT,
       allowNull: false
+    },
+    received_date: {
+      type: DataTypes.DATE,
+      defaultValue: DataTypes.NOW
     },
     image: {
       type: DataTypes.STRING,

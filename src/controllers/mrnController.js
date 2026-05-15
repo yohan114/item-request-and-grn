@@ -8,9 +8,26 @@ const { computePendingItems, parseItems } = require('../utils/pendingItemsHelper
 const createValidation = [
   body('request_for').trim().notEmpty().withMessage('Request For is required'),
   body('items').isArray({ min: 1 }).withMessage('Items must be a non-empty array'),
-  body('items.*.item_no').trim().notEmpty().withMessage('Each item must have an item number'),
-  body('items.*.description').trim().notEmpty().withMessage('Each item must have a description'),
-  body('items.*.qty').isFloat({ gt: 0 }).withMessage('Each item must have a quantity greater than 0'),
+  body('items').custom((items) => {
+    if (!Array.isArray(items)) return true;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      const itemName = item.item_name || item.item_no;
+      if (!itemName || (typeof itemName === 'string' && !itemName.trim())) {
+        throw new Error(`Item ${i + 1} must have an item name or item number`);
+      }
+      if (!item.description || (typeof item.description === 'string' && !item.description.trim())) {
+        throw new Error(`Item ${i + 1} must have a description`);
+      }
+      const qty = item.quantity !== undefined ? item.quantity : item.qty;
+      if (qty === undefined || qty === null || isNaN(qty) || parseFloat(qty) <= 0) {
+        throw new Error(`Item ${i + 1} must have a quantity greater than 0`);
+      }
+    }
+    return true;
+  }),
+  body('supplier_name').optional({ values: 'falsy' }).trim(),
+  body('project_name').optional({ values: 'falsy' }).trim(),
   body('request_person_name').optional({ values: 'falsy' }).trim(),
   body('request_person_designation').optional({ values: 'falsy' }).trim(),
   body('approval_person_name').optional({ values: 'falsy' }).trim(),
@@ -24,21 +41,22 @@ const updateValidation = [
     if (!Array.isArray(items)) return true;
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
-      if (!item.item_no || (typeof item.item_no === 'string' && !item.item_no.trim())) {
-        throw new Error(`Item ${i + 1} must have an item number`);
+      const itemName = item.item_name || item.item_no;
+      if (!itemName || (typeof itemName === 'string' && !itemName.trim())) {
+        throw new Error(`Item ${i + 1} must have an item name or item number`);
       }
       if (!item.description || (typeof item.description === 'string' && !item.description.trim())) {
         throw new Error(`Item ${i + 1} must have a description`);
       }
-      if (item.qty === undefined || item.qty === null || isNaN(item.qty) || parseFloat(item.qty) <= 0) {
+      const qty = item.quantity !== undefined ? item.quantity : item.qty;
+      if (qty === undefined || qty === null || isNaN(qty) || parseFloat(qty) <= 0) {
         throw new Error(`Item ${i + 1} must have a quantity greater than 0`);
       }
     }
     return true;
   }),
-  body('items.*.item_no').trim().notEmpty().withMessage('Each item must have an item number'),
-  body('items.*.description').trim().notEmpty().withMessage('Each item must have a description'),
-  body('items.*.qty').isFloat({ gt: 0 }).withMessage('Each item must have a quantity greater than 0'),
+  body('supplier_name').optional({ values: 'falsy' }).trim(),
+  body('project_name').optional({ values: 'falsy' }).trim(),
   body('request_person_name').optional({ values: 'falsy' }).trim(),
   body('request_person_designation').optional({ values: 'falsy' }).trim(),
   body('approval_person_name').optional({ values: 'falsy' }).trim(),
@@ -50,19 +68,37 @@ const create = async (req, res, next) => {
     const {
       request_for,
       items,
+      supplier_name,
+      project_name,
       request_person_name,
       request_person_designation,
       approval_person_name,
       approval_person_designation
     } = req.body;
 
+    // Normalize items to include item_status
+    const normalizedItems = (Array.isArray(items) ? items : []).map(item => ({
+      item_name: item.item_name || item.item_no,
+      item_no: item.item_no || item.item_name,
+      description: item.description,
+      quantity: item.quantity !== undefined ? parseFloat(item.quantity) : parseFloat(item.qty),
+      qty: item.qty !== undefined ? parseFloat(item.qty) : parseFloat(item.quantity),
+      unit: item.unit || null,
+      remarks: item.remarks || null,
+      item_status: 'Pending Approval'
+    }));
+
     const mrn = await createMRNWithRetry({
       request_for,
-      items,
+      items: normalizedItems,
+      supplier_name: supplier_name || null,
+      project_name: project_name || null,
       request_person_name: request_person_name || null,
       request_person_designation: request_person_designation || null,
       approval_person_name: approval_person_name || null,
       approval_person_designation: approval_person_designation || null,
+      status: 'Draft',
+      approval_status: 'Pending',
       created_by: req.user.id
     });
 
@@ -229,6 +265,14 @@ const update = async (req, res, next) => {
       });
     }
 
+    // Can only edit when status is Draft
+    if (mrn.status !== 'Draft') {
+      return res.status(400).json({
+        success: false,
+        message: 'Can only edit MRN when status is Draft'
+      });
+    }
+
     // Store Keeper can only edit their own records
     if (req.user.role === 'Store Keeper' && mrn.created_by !== req.user.id) {
       return res.status(403).json({
@@ -241,14 +285,29 @@ const update = async (req, res, next) => {
 
     const updateData = {};
     const allowedFields = [
-      'request_for', 'items', 'request_person_name', 'request_person_designation',
-      'approval_person_name', 'approval_person_designation', 'status'
+      'request_for', 'items', 'supplier_name', 'project_name',
+      'request_person_name', 'request_person_designation',
+      'approval_person_name', 'approval_person_designation'
     ];
 
     for (const field of allowedFields) {
       if (req.body[field] !== undefined) {
         updateData[field] = req.body[field];
       }
+    }
+
+    // Normalize items if provided
+    if (updateData.items && Array.isArray(updateData.items)) {
+      updateData.items = updateData.items.map(item => ({
+        item_name: item.item_name || item.item_no,
+        item_no: item.item_no || item.item_name,
+        description: item.description,
+        quantity: item.quantity !== undefined ? parseFloat(item.quantity) : parseFloat(item.qty),
+        qty: item.qty !== undefined ? parseFloat(item.qty) : parseFloat(item.quantity),
+        unit: item.unit || null,
+        remarks: item.remarks || null,
+        item_status: item.item_status || 'Pending Approval'
+      }));
     }
 
     await mrn.update(updateData);
@@ -266,6 +325,70 @@ const update = async (req, res, next) => {
     res.json({
       success: true,
       message: 'MRN record updated successfully',
+      data: mrn
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const submit = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const mrn = await MRN.findByPk(id);
+
+    if (!mrn) {
+      return res.status(404).json({
+        success: false,
+        message: 'MRN record not found'
+      });
+    }
+
+    // Only owner or Admin/Manager can submit
+    if (req.user.role === 'Store Keeper' && mrn.created_by !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'You can only submit your own records'
+      });
+    }
+
+    // Can only submit from Draft status
+    if (mrn.status !== 'Draft') {
+      return res.status(400).json({
+        success: false,
+        message: 'Can only submit MRN when status is Draft'
+      });
+    }
+
+    // Can only submit when approval_status is Pending or Rejected
+    if (mrn.approval_status !== 'Pending' && mrn.approval_status !== 'Rejected') {
+      return res.status(400).json({
+        success: false,
+        message: 'Can only submit MRN when approval status is Pending or Rejected'
+      });
+    }
+
+    const oldValues = mrn.toJSON();
+
+    await mrn.update({
+      status: 'Submitted',
+      approval_status: 'Pending'
+    });
+
+    await createAuditLog({
+      user_id: req.user.id,
+      action: 'SUBMIT',
+      entity_type: 'MRN',
+      entity_id: mrn.id,
+      old_values: oldValues,
+      new_values: mrn.toJSON(),
+      ip_address: req.ip
+    });
+
+    res.json({
+      success: true,
+      message: 'MRN submitted successfully',
       data: mrn
     });
   } catch (error) {
@@ -338,10 +461,31 @@ const approveMRN = async (req, res, next) => {
 
     const oldValues = mrn.toJSON();
 
+    // Update items to set item_status to 'Approved'
+    const items = parseItems(mrn.items);
+    const updatedItems = items.map(item => ({
+      ...item,
+      item_status: 'Approved'
+    }));
+
+    // Build approval history entry
+    const approvalHistoryEntry = {
+      action: 'Approved',
+      user_id: req.user.id,
+      user_name: req.user.full_name || req.user.username,
+      date: new Date().toISOString(),
+      remarks: approval_remarks || null
+    };
+
+    const currentHistory = mrn.approval_history || [];
+
     await mrn.update({
       approval_status: 'Approved',
+      status: 'Approved',
       approved_by: req.user.id,
-      approval_remarks: approval_remarks || null
+      approval_remarks: approval_remarks || null,
+      items: updatedItems,
+      approval_history: [...currentHistory, approvalHistoryEntry]
     });
 
     await createAuditLog({
@@ -401,10 +545,23 @@ const rejectMRN = async (req, res, next) => {
 
     const oldValues = mrn.toJSON();
 
+    // Build approval history entry
+    const approvalHistoryEntry = {
+      action: 'Rejected',
+      user_id: req.user.id,
+      user_name: req.user.full_name || req.user.username,
+      date: new Date().toISOString(),
+      remarks: approval_remarks.trim()
+    };
+
+    const currentHistory = mrn.approval_history || [];
+
     await mrn.update({
       approval_status: 'Rejected',
+      status: 'Draft',
       approved_by: req.user.id,
-      approval_remarks: approval_remarks.trim()
+      approval_remarks: approval_remarks.trim(),
+      approval_history: [...currentHistory, approvalHistoryEntry]
     });
 
     await createAuditLog({
@@ -457,6 +614,7 @@ module.exports = {
   list,
   getById,
   update,
+  submit,
   remove,
   approveMRN,
   rejectMRN,
