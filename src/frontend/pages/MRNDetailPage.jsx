@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { mrnAPI, mrnAttachmentsAPI, mrnPdfAPI, grnAPI, attachmentsAPI } from '../services/api';
+import { parseMrnItems } from '../services/utils';
 import { useAuth } from '../context/AuthContext';
 import AttachmentUploadModal from './AttachmentUploadModal';
 
@@ -84,11 +85,7 @@ function MRNDetailPage() {
 
   const canEdit = record.status === 'Draft' && ['Admin', 'Manager', 'Store Keeper'].includes(user?.role);
 
-  const parsedItems = (() => {
-    if (!record.items) return [];
-    if (Array.isArray(record.items)) return record.items;
-    try { return JSON.parse(record.items); } catch (e) { return []; }
-  })();
+  const parsedItems = parseMrnItems(record.items);
 
   return (
     <div>

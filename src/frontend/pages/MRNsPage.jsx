@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { mrnAPI } from '../services/api';
+import { getMrnItemsCount } from '../services/utils';
 import { useAuth } from '../context/AuthContext';
 
 function MRNsPage() {
@@ -52,14 +53,7 @@ function MRNsPage() {
   };
 
   const getItemsCount = (record) => {
-    if (!record.items) return 0;
-    if (Array.isArray(record.items)) return record.items.length;
-    try {
-      const parsed = JSON.parse(record.items);
-      return Array.isArray(parsed) ? parsed.length : 0;
-    } catch (e) {
-      return 0;
-    }
+    return getMrnItemsCount(record);
   };
 
   return (

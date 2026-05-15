@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { mrnAPI } from '../services/api';
+import { parseMrnItems } from '../services/utils';
 
 function MRNFormPage() {
   const { id } = useParams();
@@ -38,8 +39,8 @@ function MRNFormPage() {
         approval_person_name: data.approval_person_name || '',
         approval_person_designation: data.approval_person_designation || ''
       });
-      const parsedItems = typeof data.items === 'string' ? JSON.parse(data.items) : data.items;
-      if (Array.isArray(parsedItems) && parsedItems.length > 0) {
+      const parsedItems = parseMrnItems(data.items);
+      if (parsedItems.length > 0) {
         setItems(parsedItems);
       }
     } catch (err) {

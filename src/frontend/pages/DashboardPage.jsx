@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { reportsAPI, localPurchasesAPI, mrnAPI, grnAPI } from '../services/api';
+import { getMrnItemsCount } from '../services/utils';
 
 function DashboardPage() {
   const [summary, setSummary] = useState(null);
@@ -145,11 +146,7 @@ function DashboardPage() {
               </thead>
               <tbody>
                 {recentMRNs.map(record => {
-                  let itemsCount = 0;
-                  if (record.items) {
-                    if (Array.isArray(record.items)) itemsCount = record.items.length;
-                    else { try { itemsCount = JSON.parse(record.items).length; } catch(e) {} }
-                  }
+                  const itemsCount = getMrnItemsCount(record);
                   return (
                   <tr key={record.id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/mrns/${record.id}`)}>
                     <td>{record.mrn_number}</td>

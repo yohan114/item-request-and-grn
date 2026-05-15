@@ -19,9 +19,25 @@ const createValidation = [
 const updateValidation = [
   body('request_for').optional().trim().notEmpty().withMessage('Request For cannot be empty'),
   body('items').optional().isArray({ min: 1 }).withMessage('Items must be a non-empty array'),
-  body('items.*.item_no').optional().trim().notEmpty().withMessage('Each item must have an item number'),
-  body('items.*.description').optional().trim().notEmpty().withMessage('Each item must have a description'),
-  body('items.*.qty').optional().isFloat({ gt: 0 }).withMessage('Each item must have a quantity greater than 0'),
+  body('items').optional().custom((items) => {
+    if (!Array.isArray(items)) return true;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (!item.item_no || (typeof item.item_no === 'string' && !item.item_no.trim())) {
+        throw new Error(`Item ${i + 1} must have an item number`);
+      }
+      if (!item.description || (typeof item.description === 'string' && !item.description.trim())) {
+        throw new Error(`Item ${i + 1} must have a description`);
+      }
+      if (item.qty === undefined || item.qty === null || isNaN(item.qty) || parseFloat(item.qty) <= 0) {
+        throw new Error(`Item ${i + 1} must have a quantity greater than 0`);
+      }
+    }
+    return true;
+  }),
+  body('items.*.item_no').trim().notEmpty().withMessage('Each item must have an item number'),
+  body('items.*.description').trim().notEmpty().withMessage('Each item must have a description'),
+  body('items.*.qty').isFloat({ gt: 0 }).withMessage('Each item must have a quantity greater than 0'),
   body('request_person_name').optional({ values: 'falsy' }).trim(),
   body('request_person_designation').optional({ values: 'falsy' }).trim(),
   body('approval_person_name').optional({ values: 'falsy' }).trim(),
