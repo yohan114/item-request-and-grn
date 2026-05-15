@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { mrnAPI } from '../services/api';
-import { getMrnItemsCount } from '../services/utils';
+import { getMrnItemsCount, parseMrnItems } from '../services/utils';
 import { useAuth } from '../context/AuthContext';
 
 function MRNsPage() {
@@ -58,12 +58,33 @@ function MRNsPage() {
     return getMrnItemsCount(record);
   };
 
+  const getItemStatusSummary = (record) => {
+    const items = parseMrnItems(record.items);
+    if (items.length === 0) return null;
+    const pending = items.filter(i => i.item_status === 'Pending Approval' || i.item_status === 'Approved' || i.item_status === 'Pending Receive').length;
+    const received = items.filter(i => i.item_status === 'Fully Received' || i.item_status === 'GRN Completed').length;
+    return { pending, received, total: items.length };
+  };
+
   const getApprovalBadgeClass = (approvalStatus) => {
     switch (approvalStatus) {
       case 'Approved': return 'badge-completed';
       case 'Rejected': return 'badge-draft';
       case 'Pending': return 'badge-submitted';
       default: return 'badge-draft';
+    }
+  };
+
+  const getStatusBadgeStyle = (status) => {
+    switch (status) {
+      case 'Draft': return {};
+      case 'Submitted': return { background: '#3b82f6', color: '#fff' };
+      case 'Approved': return { background: '#16a34a', color: '#fff' };
+      case 'Received Pending': return { background: '#f59e0b', color: '#fff' };
+      case 'Partially Received': return { background: '#d97706', color: '#fff' };
+      case 'Fully Received': return { background: '#059669', color: '#fff' };
+      case 'Closed': return { background: '#6b7280', color: '#fff' };
+      default: return {};
     }
   };
 
@@ -91,9 +112,11 @@ function MRNsPage() {
             <option value="">All Status</option>
             <option value="Draft">Draft</option>
             <option value="Submitted">Submitted</option>
-            <option value="Purchased">Purchased</option>
-            <option value="Delivered">Delivered</option>
-            <option value="Completed">Completed</option>
+            <option value="Approved">Approved</option>
+            <option value="Received Pending">Received Pending</option>
+            <option value="Partially Received">Partially Received</option>
+            <option value="Fully Received">Fully Received</option>
+            <option value="Closed">Closed</option>
           </select>
           <select className="form-control" value={approvalStatus} onChange={(e) => { setApprovalStatus(e.target.value); setPage(1); }}>
             <option value="">All Approval</option>
@@ -128,36 +151,45 @@ function MRNsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {records.map(record => (
-                    <tr key={record.id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/mrns/${record.id}`)}>
-                      <td>{record.mrn_number}</td>
-                      <td>{record.created_at ? new Date(record.created_at).toLocaleDateString() : '-'}</td>
-                      <td>{record.request_for}</td>
-                      <td>{getItemsCount(record)} item(s)</td>
-                      <td>
-                        {record.pending_items_count === 0 ? (
-                          <span style={{ color: '#16a34a', fontWeight: 600 }}>All received</span>
-                        ) : (
-                          <span className="badge badge-submitted" style={{ background: '#f59e0b', color: '#fff' }}>
-                            {record.pending_items_count} pending
+                  {records.map(record => {
+                    const itemSummary = getItemStatusSummary(record);
+                    return (
+                      <tr key={record.id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/mrns/${record.id}`)}>
+                        <td>{record.mrn_number}</td>
+                        <td>{record.created_at ? new Date(record.created_at).toLocaleDateString() : '-'}</td>
+                        <td>{record.request_for}</td>
+                        <td>{getItemsCount(record)} item(s)</td>
+                        <td>
+                          {itemSummary && itemSummary.pending === 0 ? (
+                            <span style={{ color: '#16a34a', fontWeight: 600 }}>All received</span>
+                          ) : itemSummary ? (
+                            <span className="badge" style={{ background: '#f59e0b', color: '#fff' }}>
+                              {itemSummary.pending} pending
+                            </span>
+                          ) : (
+                            <span style={{ color: '#6b7280' }}>-</span>
+                          )}
+                        </td>
+                        <td>
+                          <span className="badge" style={getStatusBadgeStyle(record.status)}>
+                            {record.status}
                           </span>
-                        )}
-                      </td>
-                      <td><span className={`badge badge-${(record.status || 'draft').toLowerCase()}`}>{record.status}</span></td>
-                      <td><span className={`badge ${getApprovalBadgeClass(record.approval_status)}`}>{record.approval_status || 'Pending'}</span></td>
-                      <td>
-                        <div className="btn-group" onClick={(e) => e.stopPropagation()}>
-                          <button className="btn btn-secondary btn-sm" onClick={() => navigate(`/mrns/${record.id}`)}>View</button>
-                          {record.status === 'Draft' && record.approval_status !== 'Approved' && ['Admin', 'Manager', 'Store Keeper'].includes(user?.role) && (
-                            <button className="btn btn-secondary btn-sm" onClick={() => navigate(`/mrns/${record.id}/edit`)}>Edit</button>
-                          )}
-                          {['Admin'].includes(user?.role) && (
-                            <button className="btn btn-danger btn-sm" onClick={(e) => handleDelete(record.id, e)}>Del</button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                        <td><span className={`badge ${getApprovalBadgeClass(record.approval_status)}`}>{record.approval_status || 'Pending'}</span></td>
+                        <td>
+                          <div className="btn-group" onClick={(e) => e.stopPropagation()}>
+                            <button className="btn btn-secondary btn-sm" onClick={() => navigate(`/mrns/${record.id}`)}>View</button>
+                            {record.status === 'Draft' && (record.approval_status === 'Pending' || record.approval_status === 'Rejected') && ['Admin', 'Manager', 'Store Keeper'].includes(user?.role) && (
+                              <button className="btn btn-secondary btn-sm" onClick={() => navigate(`/mrns/${record.id}/edit`)}>Edit</button>
+                            )}
+                            {['Admin'].includes(user?.role) && (
+                              <button className="btn btn-danger btn-sm" onClick={(e) => handleDelete(record.id, e)}>Del</button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

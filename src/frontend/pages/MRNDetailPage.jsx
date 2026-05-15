@@ -17,6 +17,7 @@ function MRNDetailPage() {
   const [showUpload, setShowUpload] = useState(false);
   const [approvalRemarks, setApprovalRemarks] = useState('');
   const [approving, setApproving] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -40,6 +41,19 @@ function MRNDetailPage() {
       console.error('Failed to load MRN:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSubmitForApproval = async () => {
+    if (!confirm('Submit this MRN for approval?')) return;
+    try {
+      setSubmitting(true);
+      await mrnAPI.submit(id);
+      loadData();
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to submit MRN');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -120,10 +134,12 @@ function MRNDetailPage() {
   if (loading) return <div className="loading">Loading...</div>;
   if (!record) return <div className="empty-state"><h3>MRN not found</h3></div>;
 
-  const canEdit = record.status === 'Draft' && record.approval_status !== 'Approved' && ['Admin', 'Manager', 'Store Keeper'].includes(user?.role);
-  const canApprove = record.approval_status === 'Pending' && ['Engineer', 'Manager', 'Admin'].includes(user?.role);
+  const canEdit = record.status === 'Draft' && (record.approval_status === 'Pending' || record.approval_status === 'Rejected') && ['Admin', 'Manager', 'Store Keeper'].includes(user?.role);
+  const canApprove = record.status === 'Submitted' && record.approval_status === 'Pending' && ['Engineer', 'Manager', 'Admin'].includes(user?.role);
+  const canSubmit = record.status === 'Draft' && (record.approval_status === 'Pending' || record.approval_status === 'Rejected') && ['Store Keeper', 'Manager', 'Admin'].includes(user?.role);
 
   const parsedItems = parseMrnItems(record.items);
+  const approvalHistory = record.approval_history || [];
 
   const getApprovalBadgeClass = (status) => {
     switch (status) {
@@ -134,13 +150,39 @@ function MRNDetailPage() {
     }
   };
 
+  const getStatusBadgeStyle = (status) => {
+    switch (status) {
+      case 'Draft': return {};
+      case 'Submitted': return { background: '#3b82f6', color: '#fff' };
+      case 'Approved': return { background: '#16a34a', color: '#fff' };
+      case 'Received Pending': return { background: '#f59e0b', color: '#fff' };
+      case 'Partially Received': return { background: '#d97706', color: '#fff' };
+      case 'Fully Received': return { background: '#059669', color: '#fff' };
+      case 'Closed': return { background: '#6b7280', color: '#fff' };
+      default: return {};
+    }
+  };
+
+  const getItemStatusBadgeStyle = (itemStatus) => {
+    switch (itemStatus) {
+      case 'Pending Approval': return { background: '#94a3b8', color: '#fff' };
+      case 'Approved': return { background: '#16a34a', color: '#fff' };
+      case 'Pending Receive': return { background: '#f59e0b', color: '#fff' };
+      case 'Partially Received': return { background: '#d97706', color: '#fff' };
+      case 'Fully Received': return { background: '#059669', color: '#fff' };
+      case 'GRN Pending': return { background: '#6366f1', color: '#fff' };
+      case 'GRN Completed': return { background: '#0d9488', color: '#fff' };
+      default: return { background: '#94a3b8', color: '#fff' };
+    }
+  };
+
   return (
     <div>
       <div className="card">
         <div className="card-header">
           <h2>
             {record.mrn_number}
-            <span className={`badge badge-${(record.status || 'draft').toLowerCase()}`} style={{ marginLeft: 12 }}>
+            <span className="badge" style={{ marginLeft: 12, ...getStatusBadgeStyle(record.status) }}>
               {record.status}
             </span>
             <span className={`badge ${getApprovalBadgeClass(record.approval_status)}`} style={{ marginLeft: 8 }}>
@@ -148,6 +190,16 @@ function MRNDetailPage() {
             </span>
           </h2>
           <div className="btn-group">
+            {canSubmit && (
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={handleSubmitForApproval}
+                disabled={submitting}
+                style={{ background: '#16a34a' }}
+              >
+                {submitting ? 'Submitting...' : 'Submit for Approval'}
+              </button>
+            )}
             {canEdit && (
               <button className="btn btn-secondary btn-sm" onClick={() => navigate(`/mrns/${id}/edit`)}>Edit</button>
             )}
@@ -168,9 +220,23 @@ function MRNDetailPage() {
             <div className="label">Request For</div>
             <div className="value">{record.request_for}</div>
           </div>
+          {record.supplier_name && (
+            <div className="detail-item">
+              <div className="label">Supplier Name</div>
+              <div className="value">{record.supplier_name}</div>
+            </div>
+          )}
+          {record.project_name && (
+            <div className="detail-item">
+              <div className="label">Project Name</div>
+              <div className="value">{record.project_name}</div>
+            </div>
+          )}
           <div className="detail-item">
             <div className="label">Status</div>
-            <div className="value">{record.status}</div>
+            <div className="value">
+              <span className="badge" style={getStatusBadgeStyle(record.status)}>{record.status}</span>
+            </div>
           </div>
           <div className="detail-item">
             <div className="label">Approval Status</div>
@@ -253,17 +319,27 @@ function MRNDetailPage() {
               <table>
                 <thead>
                   <tr>
-                    <th>Item No</th>
+                    <th>Item Name</th>
                     <th>Description</th>
                     <th>Quantity</th>
+                    <th>Unit</th>
+                    <th>Remarks</th>
+                    <th>Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {parsedItems.map((item, index) => (
                     <tr key={index}>
-                      <td>{item.item_no}</td>
+                      <td>{item.item_name}</td>
                       <td>{item.description}</td>
-                      <td>{item.qty}</td>
+                      <td>{item.quantity}</td>
+                      <td>{item.unit || '-'}</td>
+                      <td>{item.remarks || '-'}</td>
+                      <td>
+                        <span className="badge" style={getItemStatusBadgeStyle(item.item_status)}>
+                          {item.item_status}
+                        </span>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -273,26 +349,61 @@ function MRNDetailPage() {
         )}
       </div>
 
+      {/* Approval History */}
+      {approvalHistory.length > 0 && (
+        <div className="card">
+          <div className="card-header">
+            <h2>Approval History</h2>
+          </div>
+          <div className="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Action</th>
+                  <th>User</th>
+                  <th>Date/Time</th>
+                  <th>Remarks</th>
+                </tr>
+              </thead>
+              <tbody>
+                {approvalHistory.map((entry, index) => (
+                  <tr key={index}>
+                    <td>
+                      <span className="badge" style={entry.action === 'Approved' ? { background: '#16a34a', color: '#fff' } : entry.action === 'Rejected' ? { background: '#dc2626', color: '#fff' } : { background: '#3b82f6', color: '#fff' }}>
+                        {entry.action}
+                      </span>
+                    </td>
+                    <td>{entry.user_name || '-'}</td>
+                    <td>{entry.date ? new Date(entry.date).toLocaleString() : '-'}</td>
+                    <td>{entry.remarks || '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* Pending Items */}
       <div className="card">
         <div className="card-header">
           <h2>
             Pending Items
-            {record.status === 'Completed' && (
-              <span className="badge badge-completed" style={{ marginLeft: 12 }}>All Items Received</span>
+            {(record.status === 'Fully Received' || record.status === 'Closed') && (
+              <span className="badge" style={{ marginLeft: 12, background: '#16a34a', color: '#fff' }}>All Items Received</span>
             )}
           </h2>
         </div>
         {pendingItems.length === 0 ? (
           <p style={{ color: 'var(--gray-500)', fontSize: 14 }}>
-            {record.status === 'Completed' ? 'All items have been received.' : 'No pending items.'}
+            {(record.status === 'Fully Received' || record.status === 'Closed') ? 'All items have been received.' : 'No pending items.'}
           </p>
         ) : (
           <div className="table-container">
             <table>
               <thead>
                 <tr>
-                  <th>Item No</th>
+                  <th>Item Name</th>
                   <th>Description</th>
                   <th>Required Qty</th>
                   <th>Received Qty</th>
@@ -302,9 +413,9 @@ function MRNDetailPage() {
               <tbody>
                 {pendingItems.map((item, index) => (
                   <tr key={index}>
-                    <td>{item.item_no}</td>
+                    <td>{item.item_name || item.item_no}</td>
                     <td>{item.description}</td>
-                    <td>{item.qty}</td>
+                    <td>{item.quantity || item.qty}</td>
                     <td>{item.total_received}</td>
                     <td style={{ color: item.remaining_qty > 0 ? '#d97706' : undefined, fontWeight: item.remaining_qty > 0 ? 600 : undefined }}>
                       {item.remaining_qty}
@@ -380,7 +491,7 @@ function MRNDetailPage() {
                 {linkedGRNs.map(grn => (
                   <tr key={grn.id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/grns/${grn.id}`)}>
                     <td>{grn.grn_number}</td>
-                    <td><span className={`badge badge-${(grn.status || 'pending').toLowerCase()}`}>{grn.status}</span></td>
+                    <td><span className="badge" style={getStatusBadgeStyle(grn.status)}>{grn.status}</span></td>
                     <td>{grn.received_quantity}</td>
                     <td>{grn.created_at ? new Date(grn.created_at || grn.createdAt).toLocaleDateString() : '-'}</td>
                   </tr>

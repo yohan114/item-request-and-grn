@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { receivedItemsAPI, mrnAPI } from '../services/api';
+import { parseMrnItems } from '../services/utils';
 
 function ReceivedItemFormPage() {
   const { id } = useParams();
@@ -12,11 +13,13 @@ function ReceivedItemFormPage() {
 
   const [mrns, setMrns] = useState([]);
   const [mrnItems, setMrnItems] = useState([]);
+  const [pendingItems, setPendingItems] = useState([]);
   const [loadingMrnItems, setLoadingMrnItems] = useState(false);
 
   const [selectedMrnId, setSelectedMrnId] = useState('');
   const [selectedMrnNumber, setSelectedMrnNumber] = useState('');
   const [selectedItem, setSelectedItem] = useState(null);
+  const [selectedItemIndex, setSelectedItemIndex] = useState(null);
   const [receivedQty, setReceivedQty] = useState('');
   const [notes, setNotes] = useState('');
   const [imageFile, setImageFile] = useState(null);
@@ -31,9 +34,10 @@ function ReceivedItemFormPage() {
 
   const loadMRNs = async () => {
     try {
-      const res = await mrnAPI.getAll({ limit: 1000 });
+      // Only show approved MRNs
+      const res = await mrnAPI.getAll({ approval_status: 'Approved', limit: 1000 });
       const data = res.data.data;
-      setMrns(Array.isArray(data) ? data : []);
+      setMrns(Array.isArray(data) ? data : (data?.records || []));
     } catch (err) {
       console.error('Failed to load MRNs:', err);
     }
@@ -61,6 +65,9 @@ function ReceivedItemFormPage() {
         }
       }
       setSelectedItem(itemDetails);
+      if (data.item_index !== undefined && data.item_index !== null) {
+        setSelectedItemIndex(data.item_index);
+      }
       // Load MRN items for the selected MRN
       if (data.mrn_id) {
         loadMRNItems(data.mrn_id);
@@ -75,20 +82,18 @@ function ReceivedItemFormPage() {
   const loadMRNItems = async (mrnId) => {
     try {
       setLoadingMrnItems(true);
-      const res = await mrnAPI.getById(mrnId);
-      const data = res.data.data;
-      let items = data.items;
-      if (typeof items === 'string') {
-        try {
-          items = JSON.parse(items);
-        } catch (e) {
-          items = [];
-        }
-      }
-      setMrnItems(Array.isArray(items) ? items : []);
+      const [mrnRes, pendingRes] = await Promise.all([
+        mrnAPI.getById(mrnId),
+        mrnAPI.getPendingItems(mrnId).catch(() => ({ data: { data: [] } }))
+      ]);
+      const data = mrnRes.data.data;
+      const items = parseMrnItems(data.items);
+      setMrnItems(items);
+      setPendingItems(pendingRes.data.data || []);
     } catch (err) {
       console.error('Failed to load MRN items:', err);
       setMrnItems([]);
+      setPendingItems([]);
     } finally {
       setLoadingMrnItems(false);
     }
@@ -98,7 +103,9 @@ function ReceivedItemFormPage() {
     const mrnId = e.target.value;
     setSelectedMrnId(mrnId);
     setSelectedItem(null);
+    setSelectedItemIndex(null);
     setMrnItems([]);
+    setPendingItems([]);
 
     if (mrnId) {
       const mrn = mrns.find(m => m.id === mrnId);
@@ -112,6 +119,20 @@ function ReceivedItemFormPage() {
   const handleItemSelect = (index) => {
     const item = mrnItems[index];
     setSelectedItem(item || null);
+    setSelectedItemIndex(index);
+  };
+
+  const getRemainingQty = (index) => {
+    if (!pendingItems || pendingItems.length === 0) return null;
+    // Match by index or by item_name
+    const item = mrnItems[index];
+    if (!item) return null;
+    const pending = pendingItems.find(p =>
+      (p.item_name && p.item_name === item.item_name) ||
+      (p.item_no && p.item_no === item.item_name) ||
+      (p.item_no && p.item_no === item.item_no)
+    );
+    return pending ? pending.remaining_qty : null;
   };
 
   const handleSubmit = async (e) => {
@@ -131,6 +152,13 @@ function ReceivedItemFormPage() {
       return;
     }
 
+    // Validate against remaining quantity
+    const remaining = getRemainingQty(selectedItemIndex);
+    if (remaining !== null && parseFloat(receivedQty) > remaining) {
+      setError(`Received quantity (${receivedQty}) exceeds remaining quantity (${remaining})`);
+      return;
+    }
+
     try {
       setSaving(true);
       const formData = new FormData();
@@ -138,6 +166,9 @@ function ReceivedItemFormPage() {
       formData.append('mrn_number', selectedMrnNumber);
       formData.append('item_details', JSON.stringify(selectedItem));
       formData.append('received_qty', receivedQty);
+      if (selectedItemIndex !== null) {
+        formData.append('item_index', selectedItemIndex);
+      }
       if (notes) formData.append('notes', notes);
       if (imageFile) {
         formData.append('image', imageFile);
@@ -175,17 +206,17 @@ function ReceivedItemFormPage() {
 
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <label>MRN Number *</label>
+            <label>MRN Number * (Approved MRNs only)</label>
             <select
               className="form-control"
               value={selectedMrnId}
               onChange={handleMrnChange}
               disabled={isEdit}
             >
-              <option value="">-- Select MRN --</option>
+              <option value="">-- Select Approved MRN --</option>
               {mrns.map(mrn => (
                 <option key={mrn.id} value={mrn.id}>
-                  {mrn.mrn_number}
+                  {mrn.mrn_number} {mrn.supplier_name ? `- ${mrn.supplier_name}` : ''}
                 </option>
               ))}
             </select>
@@ -201,16 +232,18 @@ function ReceivedItemFormPage() {
                   <thead>
                     <tr>
                       <th>Select</th>
-                      <th>Item No</th>
+                      <th>Item Name</th>
                       <th>Description</th>
-                      <th>Qty</th>
+                      <th>Quantity</th>
+                      <th>Unit</th>
+                      <th>Remaining</th>
+                      <th>Status</th>
                     </tr>
                   </thead>
                   <tbody>
                     {mrnItems.map((item, index) => {
-                      const isSelected = selectedItem &&
-                        selectedItem.item_no === item.item_no &&
-                        selectedItem.description === item.description;
+                      const isSelected = selectedItemIndex === index;
+                      const remaining = getRemainingQty(index);
                       return (
                         <tr
                           key={index}
@@ -228,9 +261,18 @@ function ReceivedItemFormPage() {
                               onChange={() => handleItemSelect(index)}
                             />
                           </td>
-                          <td>{item.item_no}</td>
+                          <td>{item.item_name}</td>
                           <td>{item.description}</td>
-                          <td>{item.qty}</td>
+                          <td>{item.quantity}</td>
+                          <td>{item.unit || '-'}</td>
+                          <td style={{ fontWeight: 600, color: remaining && remaining > 0 ? '#d97706' : '#16a34a' }}>
+                            {remaining !== null ? remaining : '-'}
+                          </td>
+                          <td>
+                            <span className="badge" style={getItemStatusStyle(item.item_status)}>
+                              {item.item_status}
+                            </span>
+                          </td>
                         </tr>
                       );
                     })}
@@ -242,7 +284,12 @@ function ReceivedItemFormPage() {
 
           {selectedItem && (
             <div className="form-group" style={{ padding: '12px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 6 }}>
-              <strong>Selected Item:</strong> {selectedItem.item_no} - {selectedItem.description} (Qty: {selectedItem.qty})
+              <strong>Selected Item:</strong> {selectedItem.item_name || selectedItem.item_no} - {selectedItem.description} (Qty: {selectedItem.quantity || selectedItem.qty})
+              {getRemainingQty(selectedItemIndex) !== null && (
+                <span style={{ marginLeft: 12, color: '#d97706', fontWeight: 600 }}>
+                  Remaining: {getRemainingQty(selectedItemIndex)}
+                </span>
+              )}
             </div>
           )}
 
@@ -258,6 +305,11 @@ function ReceivedItemFormPage() {
               step="0.01"
               required
             />
+            {selectedItem && getRemainingQty(selectedItemIndex) !== null && (
+              <small style={{ color: '#6b7280', marginTop: 4, display: 'block' }}>
+                Max allowed: {getRemainingQty(selectedItemIndex)}
+              </small>
+            )}
           </div>
 
           <div className="form-group">
@@ -303,6 +355,19 @@ function ReceivedItemFormPage() {
       </div>
     </div>
   );
+}
+
+function getItemStatusStyle(itemStatus) {
+  switch (itemStatus) {
+    case 'Pending Approval': return { background: '#94a3b8', color: '#fff' };
+    case 'Approved': return { background: '#16a34a', color: '#fff' };
+    case 'Pending Receive': return { background: '#f59e0b', color: '#fff' };
+    case 'Partially Received': return { background: '#d97706', color: '#fff' };
+    case 'Fully Received': return { background: '#059669', color: '#fff' };
+    case 'GRN Pending': return { background: '#6366f1', color: '#fff' };
+    case 'GRN Completed': return { background: '#0d9488', color: '#fff' };
+    default: return { background: '#94a3b8', color: '#fff' };
+  }
 }
 
 export default ReceivedItemFormPage;

@@ -9,15 +9,22 @@ function MRNFormPage() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
+  const [mrnStatus, setMrnStatus] = useState('');
+  const [approvalStatus, setApprovalStatus] = useState('');
+  const [savedId, setSavedId] = useState(id || null);
   const [form, setForm] = useState({
     request_for: '',
+    supplier_name: '',
+    project_name: '',
     request_person_name: '',
     request_person_designation: '',
     approval_person_name: '',
     approval_person_designation: ''
   });
-  const [items, setItems] = useState([{ item_no: '', description: '', qty: '' }]);
+  const [items, setItems] = useState([{ item_name: '', description: '', quantity: '', unit: '', remarks: '' }]);
 
   const today = new Date().toLocaleDateString();
 
@@ -33,15 +40,28 @@ function MRNFormPage() {
       const res = await mrnAPI.getById(id);
       const data = res.data.data;
 
-      // If MRN is approved, redirect back
+      // If MRN is approved and not rejected, redirect back
       if (data.approval_status === 'Approved') {
         setError('Cannot edit an approved MRN');
         setTimeout(() => navigate(`/mrns/${id}`), 1500);
         return;
       }
 
+      // Allow editing if status is Draft (includes rejected MRNs that go back to Draft)
+      if (data.status !== 'Draft') {
+        setError('Cannot edit MRN in current status');
+        setTimeout(() => navigate(`/mrns/${id}`), 1500);
+        return;
+      }
+
+      setMrnStatus(data.status || '');
+      setApprovalStatus(data.approval_status || '');
+      setSavedId(data.id);
+
       setForm({
         request_for: data.request_for || '',
+        supplier_name: data.supplier_name || '',
+        project_name: data.project_name || '',
         request_person_name: data.request_person_name || '',
         request_person_designation: data.request_person_designation || '',
         approval_person_name: data.approval_person_name || '',
@@ -49,7 +69,13 @@ function MRNFormPage() {
       });
       const parsedItems = parseMrnItems(data.items);
       if (parsedItems.length > 0) {
-        setItems(parsedItems);
+        setItems(parsedItems.map(item => ({
+          item_name: item.item_name || '',
+          description: item.description || '',
+          quantity: item.quantity !== undefined ? String(item.quantity) : '',
+          unit: item.unit || '',
+          remarks: item.remarks || ''
+        })));
       }
     } catch (err) {
       setError('Failed to load record');
@@ -72,7 +98,7 @@ function MRNFormPage() {
   };
 
   const addItem = () => {
-    setItems(prev => [...prev, { item_no: '', description: '', qty: '' }]);
+    setItems(prev => [...prev, { item_name: '', description: '', quantity: '', unit: '', remarks: '' }]);
   };
 
   const removeItem = (index) => {
@@ -83,6 +109,7 @@ function MRNFormPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setSuccessMsg('');
 
     if (!form.request_for.trim()) {
       setError('Request For is required');
@@ -90,15 +117,15 @@ function MRNFormPage() {
     }
 
     for (let i = 0; i < items.length; i++) {
-      if (!items[i].item_no.trim()) {
-        setError(`Item ${i + 1}: Item No is required`);
+      if (!items[i].item_name.trim()) {
+        setError(`Item ${i + 1}: Item Name is required`);
         return;
       }
       if (!items[i].description.trim()) {
         setError(`Item ${i + 1}: Description is required`);
         return;
       }
-      if (!items[i].qty || parseFloat(items[i].qty) <= 0) {
+      if (!items[i].quantity || parseFloat(items[i].quantity) <= 0) {
         setError(`Item ${i + 1}: Quantity must be greater than 0`);
         return;
       }
@@ -108,10 +135,14 @@ function MRNFormPage() {
       setSaving(true);
       const payload = {
         request_for: form.request_for,
+        supplier_name: form.supplier_name || undefined,
+        project_name: form.project_name || undefined,
         items: items.map(item => ({
-          item_no: item.item_no,
+          item_name: item.item_name,
           description: item.description,
-          qty: parseFloat(item.qty)
+          quantity: parseFloat(item.quantity),
+          unit: item.unit || undefined,
+          remarks: item.remarks || undefined
         })),
         request_person_name: form.request_person_name || undefined,
         request_person_designation: form.request_person_designation || undefined,
@@ -121,10 +152,20 @@ function MRNFormPage() {
 
       if (isEdit) {
         await mrnAPI.update(id, payload);
+        setSuccessMsg('MRN updated successfully');
+        setMrnStatus('Draft');
       } else {
-        await mrnAPI.create(payload);
+        const res = await mrnAPI.create(payload);
+        const newId = res.data.data?.id;
+        if (newId) {
+          setSavedId(newId);
+          setMrnStatus('Draft');
+          setApprovalStatus('Pending');
+          setSuccessMsg('MRN created successfully. You can now submit it for approval.');
+        } else {
+          navigate('/mrns');
+        }
       }
-      navigate('/mrns');
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to save MRN');
     } finally {
@@ -132,7 +173,27 @@ function MRNFormPage() {
     }
   };
 
+  const handleSubmitForApproval = async () => {
+    if (!savedId) return;
+    if (!confirm('Submit this MRN for approval?')) return;
+    try {
+      setSubmitting(true);
+      setError('');
+      await mrnAPI.submit(savedId);
+      setSuccessMsg('MRN submitted for approval successfully');
+      setMrnStatus('Submitted');
+      setApprovalStatus('Pending');
+      setTimeout(() => navigate(`/mrns/${savedId}`), 1500);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to submit MRN for approval');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   if (loading) return <div className="loading">Loading...</div>;
+
+  const canSubmitForApproval = savedId && mrnStatus === 'Draft' && (approvalStatus === 'Pending' || approvalStatus === 'Rejected' || approvalStatus === '');
 
   return (
     <div>
@@ -145,6 +206,7 @@ function MRNFormPage() {
         </div>
 
         {error && <div className="alert alert-error">{error}</div>}
+        {successMsg && <div className="alert alert-success" style={{ background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0', padding: '12px 16px', borderRadius: 6, marginBottom: 16 }}>{successMsg}</div>}
 
         <form onSubmit={handleSubmit}>
           <div className="form-row">
@@ -172,15 +234,42 @@ function MRNFormPage() {
             </div>
           </div>
 
+          <div className="form-row">
+            <div className="form-group">
+              <label>Supplier Name</label>
+              <input
+                type="text"
+                name="supplier_name"
+                className="form-control"
+                value={form.supplier_name}
+                onChange={handleChange}
+                placeholder="Supplier name (optional)"
+              />
+            </div>
+            <div className="form-group">
+              <label>Project Name</label>
+              <input
+                type="text"
+                name="project_name"
+                className="form-control"
+                value={form.project_name}
+                onChange={handleChange}
+                placeholder="Project name (optional)"
+              />
+            </div>
+          </div>
+
           <div className="form-group">
             <label>Items *</label>
             <div className="table-container">
               <table>
                 <thead>
                   <tr>
-                    <th>Item No</th>
+                    <th>Item Name</th>
                     <th>Description</th>
                     <th>Quantity</th>
+                    <th>Unit</th>
+                    <th>Remarks</th>
                     <th>Action</th>
                   </tr>
                 </thead>
@@ -191,9 +280,9 @@ function MRNFormPage() {
                         <input
                           type="text"
                           className="form-control"
-                          value={item.item_no}
-                          onChange={(e) => handleItemChange(index, 'item_no', e.target.value)}
-                          placeholder="Item No"
+                          value={item.item_name}
+                          onChange={(e) => handleItemChange(index, 'item_name', e.target.value)}
+                          placeholder="Item Name"
                         />
                       </td>
                       <td>
@@ -209,10 +298,28 @@ function MRNFormPage() {
                         <input
                           type="number"
                           className="form-control"
-                          value={item.qty}
-                          onChange={(e) => handleItemChange(index, 'qty', e.target.value)}
+                          value={item.quantity}
+                          onChange={(e) => handleItemChange(index, 'quantity', e.target.value)}
                           placeholder="Qty"
                           min="1"
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="text"
+                          className="form-control"
+                          value={item.unit}
+                          onChange={(e) => handleItemChange(index, 'unit', e.target.value)}
+                          placeholder="e.g. pcs, kg"
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="text"
+                          className="form-control"
+                          value={item.remarks}
+                          onChange={(e) => handleItemChange(index, 'remarks', e.target.value)}
+                          placeholder="Remarks"
                         />
                       </td>
                       <td>
@@ -290,6 +397,17 @@ function MRNFormPage() {
             <button type="submit" className="btn btn-primary" disabled={saving}>
               {saving ? 'Saving...' : (isEdit ? 'Update MRN' : 'Create MRN')}
             </button>
+            {canSubmitForApproval && (
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleSubmitForApproval}
+                disabled={submitting}
+                style={{ background: '#16a34a' }}
+              >
+                {submitting ? 'Submitting...' : 'Submit for Approval'}
+              </button>
+            )}
             <button type="button" className="btn btn-secondary" onClick={() => navigate('/mrns')}>
               Cancel
             </button>

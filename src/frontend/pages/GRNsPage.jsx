@@ -7,6 +7,7 @@ function GRNsPage() {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [mrnNumber, setMrnNumber] = useState('');
   const [status, setStatus] = useState('');
   const [approvalStatus, setApprovalStatus] = useState('');
   const [page, setPage] = useState(1);
@@ -23,6 +24,7 @@ function GRNsPage() {
       setLoading(true);
       const params = { page, limit: 10 };
       if (search) params.search = search;
+      if (mrnNumber) params.mrn_number = mrnNumber;
       if (status) params.status = status;
       if (approvalStatus) params.approval_status = approvalStatus;
       const res = await grnAPI.getAll(params);
@@ -53,6 +55,21 @@ function GRNsPage() {
     }
   };
 
+  const getStatusBadgeStyle = (status) => {
+    switch (status) {
+      case 'Draft': return { background: '#94a3b8', color: '#fff' };
+      case 'Submitted': return { background: '#3b82f6', color: '#fff' };
+      case 'Approved': return { background: '#16a34a', color: '#fff' };
+      case 'Rejected': return { background: '#dc2626', color: '#fff' };
+      default: return {};
+    }
+  };
+
+  const canEditGrn = (record) => {
+    return (record.status === 'Draft' || record.status === 'Rejected' || record.approval_status === 'Rejected') &&
+      ['Admin', 'Manager', 'Store Keeper'].includes(user?.role);
+  };
+
   return (
     <div>
       <div className="card">
@@ -73,11 +90,18 @@ function GRNsPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
+          <input
+            type="text"
+            className="form-control"
+            placeholder="Filter by MRN number..."
+            value={mrnNumber}
+            onChange={(e) => setMrnNumber(e.target.value)}
+          />
           <select className="form-control" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
             <option value="">All Status</option>
-            <option value="Pending">Pending</option>
-            <option value="Inspection">Inspection</option>
-            <option value="Completed">Completed</option>
+            <option value="Draft">Draft</option>
+            <option value="Submitted">Submitted</option>
+            <option value="Approved">Approved</option>
             <option value="Rejected">Rejected</option>
           </select>
           <select className="form-control" value={approvalStatus} onChange={(e) => { setApprovalStatus(e.target.value); setPage(1); }}>
@@ -103,10 +127,11 @@ function GRNsPage() {
                 <thead>
                   <tr>
                     <th>GRN Number</th>
+                    <th>MRN Number</th>
                     <th>Supplier</th>
                     <th>Project Name</th>
                     <th>Status</th>
-                    <th>Approval Status</th>
+                    <th>Approval</th>
                     <th>Date</th>
                     <th>Actions</th>
                   </tr>
@@ -115,9 +140,14 @@ function GRNsPage() {
                   {records.map(record => (
                     <tr key={record.id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/grns/${record.id}`)}>
                       <td>{record.grn_number}</td>
+                      <td>{record.mrn_number || record.MRN?.mrn_number || '-'}</td>
                       <td>{record.supplier_name}</td>
                       <td>{record.project_name || '-'}</td>
-                      <td><span className={`badge badge-${(record.status || 'pending').toLowerCase()}`}>{record.status}</span></td>
+                      <td>
+                        <span className="badge" style={getStatusBadgeStyle(record.status)}>
+                          {record.status}
+                        </span>
+                      </td>
                       <td>
                         <span className={`badge badge-${record.approval_status === 'Approved' ? 'approved' : record.approval_status === 'Rejected' ? 'rejected' : 'pending'}`}>
                           {record.approval_status || 'Pending'}
@@ -127,7 +157,7 @@ function GRNsPage() {
                       <td>
                         <div className="btn-group" onClick={(e) => e.stopPropagation()}>
                           <button className="btn btn-secondary btn-sm" onClick={() => navigate(`/grns/${record.id}`)}>View</button>
-                          {record.status === 'Pending' && ['Admin', 'Manager', 'Store Keeper'].includes(user?.role) && (
+                          {canEditGrn(record) && (
                             <button className="btn btn-secondary btn-sm" onClick={() => navigate(`/grns/${record.id}/edit`)}>Edit</button>
                           )}
                           {['Admin'].includes(user?.role) && (

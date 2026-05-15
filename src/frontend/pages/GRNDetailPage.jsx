@@ -113,9 +113,10 @@ function GRNDetailPage() {
   if (loading) return <div className="loading">Loading...</div>;
   if (!record) return <div className="empty-state"><h3>GRN not found</h3></div>;
 
-  const canEdit = record.status === 'Pending' && ['Admin', 'Manager', 'Store Keeper'].includes(user?.role);
-  const canApprove = record.approval_status === 'Pending' && ['Engineer', 'Manager', 'Admin'].includes(user?.role);
+  const canEdit = (record.status === 'Draft' || record.status === 'Rejected' || record.approval_status === 'Rejected') && ['Admin', 'Manager', 'Store Keeper'].includes(user?.role);
+  const canApprove = record.status === 'Submitted' && record.approval_status === 'Pending' && ['Engineer', 'Manager', 'Admin'].includes(user?.role);
   const items = parseMrnItems(record.items);
+  const approvalHistory = record.approval_history || [];
 
   const getReceivedItemDetails = (ri) => {
     let details = ri.item_details;
@@ -125,13 +126,32 @@ function GRNDetailPage() {
     return details || {};
   };
 
+  const getStatusBadgeStyle = (status) => {
+    switch (status) {
+      case 'Draft': return { background: '#94a3b8', color: '#fff' };
+      case 'Submitted': return { background: '#3b82f6', color: '#fff' };
+      case 'Approved': return { background: '#16a34a', color: '#fff' };
+      case 'Rejected': return { background: '#dc2626', color: '#fff' };
+      default: return {};
+    }
+  };
+
+  const getGrnItemStatusBadgeStyle = (grnStatus) => {
+    switch (grnStatus) {
+      case 'GRN Approved': return { background: '#0d9488', color: '#fff' };
+      case 'GRN Created': return { background: '#6366f1', color: '#fff' };
+      case 'Pending': return { background: '#f59e0b', color: '#fff' };
+      default: return { background: '#94a3b8', color: '#fff' };
+    }
+  };
+
   return (
     <div>
       <div className="card">
         <div className="card-header">
           <h2>
             {record.grn_number}
-            <span className={`badge badge-${(record.status || 'pending').toLowerCase()}`} style={{ marginLeft: 12 }}>
+            <span className="badge" style={{ marginLeft: 12, ...getStatusBadgeStyle(record.status) }}>
               {record.status}
             </span>
             <span className={`badge badge-${record.approval_status === 'Approved' ? 'approved' : record.approval_status === 'Rejected' ? 'rejected' : 'pending'}`} style={{ marginLeft: 8 }}>
@@ -140,7 +160,9 @@ function GRNDetailPage() {
           </h2>
           <div className="btn-group">
             {canEdit && (
-              <button className="btn btn-secondary btn-sm" onClick={() => navigate(`/grns/${id}/edit`)}>Edit</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => navigate(`/grns/${id}/edit`)}>
+                {record.approval_status === 'Rejected' ? 'Edit & Resubmit' : 'Edit'}
+              </button>
             )}
             <button className="btn btn-secondary btn-sm" onClick={() => navigate('/grns')}>Back</button>
           </div>
@@ -151,6 +173,16 @@ function GRNDetailPage() {
             <div className="label">GRN Number</div>
             <div className="value">{record.grn_number}</div>
           </div>
+          {(record.mrn_id || record.mrn_number || record.MRN) && (
+            <div className="detail-item">
+              <div className="label">MRN Number</div>
+              <div className="value">
+                <Link to={`/mrns/${record.mrn_id}`} style={{ color: '#3b82f6', textDecoration: 'underline' }}>
+                  {record.mrn_number || record.MRN?.mrn_number || 'View MRN'}
+                </Link>
+              </div>
+            </div>
+          )}
           <div className="detail-item">
             <div className="label">Supplier Name</div>
             <div className="value">{record.supplier_name}</div>
@@ -159,9 +191,17 @@ function GRNDetailPage() {
             <div className="label">Project Name</div>
             <div className="value">{record.project_name || '-'}</div>
           </div>
+          {record.invoice_number && (
+            <div className="detail-item">
+              <div className="label">Invoice Number</div>
+              <div className="value">{record.invoice_number}</div>
+            </div>
+          )}
           <div className="detail-item">
             <div className="label">Status</div>
-            <div className="value">{record.status}</div>
+            <div className="value">
+              <span className="badge" style={getStatusBadgeStyle(record.status)}>{record.status}</span>
+            </div>
           </div>
           <div className="detail-item">
             <div className="label">Approval Status</div>
@@ -221,6 +261,41 @@ function GRNDetailPage() {
         </div>
       )}
 
+      {/* Approval History */}
+      {approvalHistory.length > 0 && (
+        <div className="card">
+          <div className="card-header">
+            <h2>Approval History</h2>
+          </div>
+          <div className="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Action</th>
+                  <th>User</th>
+                  <th>Date/Time</th>
+                  <th>Remarks</th>
+                </tr>
+              </thead>
+              <tbody>
+                {approvalHistory.map((entry, index) => (
+                  <tr key={index}>
+                    <td>
+                      <span className="badge" style={entry.action === 'Approved' ? { background: '#16a34a', color: '#fff' } : entry.action === 'Rejected' ? { background: '#dc2626', color: '#fff' } : { background: '#3b82f6', color: '#fff' }}>
+                        {entry.action}
+                      </span>
+                    </td>
+                    <td>{entry.user_name || '-'}</td>
+                    <td>{entry.date ? new Date(entry.date).toLocaleString() : '-'}</td>
+                    <td>{entry.remarks || '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* Items Table */}
       <div className="card">
         <div className="card-header">
@@ -233,19 +308,17 @@ function GRNDetailPage() {
             <table>
               <thead>
                 <tr>
-                  <th>Item No</th>
+                  <th>Item Name</th>
                   <th>Description</th>
-                  <th>Qty</th>
-                  <th>Price</th>
+                  <th>Quantity</th>
                 </tr>
               </thead>
               <tbody>
                 {items.map((item, index) => (
                   <tr key={index}>
-                    <td>{item.item_no}</td>
+                    <td>{item.item_name || item.item_no}</td>
                     <td>{item.description}</td>
-                    <td>{item.qty}</td>
-                    <td>{item.price}</td>
+                    <td>{item.quantity || item.qty}</td>
                   </tr>
                 ))}
               </tbody>
@@ -265,7 +338,7 @@ function GRNDetailPage() {
               <thead>
                 <tr>
                   <th>RI Number</th>
-                  <th>Item No</th>
+                  <th>Item Name</th>
                   <th>Description</th>
                   <th>Received Qty</th>
                   <th>GRN Status</th>
@@ -279,11 +352,11 @@ function GRNDetailPage() {
                       <td>
                         <Link to={`/received-items/${ri.id}`}>{ri.ri_number}</Link>
                       </td>
-                      <td>{details.item_no || '-'}</td>
+                      <td>{details.item_name || details.item_no || '-'}</td>
                       <td>{details.description || '-'}</td>
                       <td>{ri.received_qty}</td>
                       <td>
-                        <span className={`badge badge-${ri.grn_status === 'GRN Approved' ? 'approved' : ri.grn_status === 'GRN Created' ? 'pending' : 'pending'}`}>
+                        <span className="badge" style={getGrnItemStatusBadgeStyle(ri.grn_status)}>
                           {ri.grn_status || 'Pending'}
                         </span>
                       </td>
@@ -295,39 +368,6 @@ function GRNDetailPage() {
           </div>
         </div>
       )}
-
-      {/* Signature Info */}
-      {(record.request_person_name || record.approval_person_name) && (
-        <div className="card">
-          <div className="card-header">
-            <h2>Signature Info</h2>
-          </div>
-          <div className="detail-grid">
-            {record.request_person_name && (
-              <div className="detail-item">
-                <div className="label">Request Person</div>
-                <div className="value">{record.request_person_name}{record.request_person_designation ? ` (${record.request_person_designation})` : ''}</div>
-              </div>
-            )}
-            {record.approval_person_name && (
-              <div className="detail-item">
-                <div className="label">Approval Person</div>
-                <div className="value">{record.approval_person_name}{record.approval_person_designation ? ` (${record.approval_person_designation})` : ''}</div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Documents */}
-      <div className="card">
-        <div className="card-header">
-          <h2>Documents</h2>
-        </div>
-        <div className="btn-group">
-          <button className="btn btn-primary btn-sm" onClick={handleDownloadPDF}>Download GRN Sheet</button>
-        </div>
-      </div>
 
       {/* Invoice Attachment */}
       {record.invoice_attachment && (
@@ -369,6 +409,39 @@ function GRNDetailPage() {
           </div>
         </div>
       )}
+
+      {/* Signature Info */}
+      {(record.request_person_name || record.approval_person_name) && (
+        <div className="card">
+          <div className="card-header">
+            <h2>Signature Info</h2>
+          </div>
+          <div className="detail-grid">
+            {record.request_person_name && (
+              <div className="detail-item">
+                <div className="label">Request Person</div>
+                <div className="value">{record.request_person_name}{record.request_person_designation ? ` (${record.request_person_designation})` : ''}</div>
+              </div>
+            )}
+            {record.approval_person_name && (
+              <div className="detail-item">
+                <div className="label">Approval Person</div>
+                <div className="value">{record.approval_person_name}{record.approval_person_designation ? ` (${record.approval_person_designation})` : ''}</div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Documents */}
+      <div className="card">
+        <div className="card-header">
+          <h2>Documents</h2>
+        </div>
+        <div className="btn-group">
+          <button className="btn btn-primary btn-sm" onClick={handleDownloadPDF}>Download GRN Sheet</button>
+        </div>
+      </div>
 
       {/* Attachments */}
       <div className="card">

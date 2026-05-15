@@ -35,7 +35,7 @@ function Layout() {
     { path: '/dashboard', label: 'Dashboard', icon: '\u2302', roles: null },
     { path: '/mrns', label: 'MRN', icon: '\u2709', roles: null },
     { path: '/grns', label: 'GRN', icon: '\u2611', roles: null },
-    { path: '/received-items', label: 'Received Items', icon: '\u2610', roles: null },
+    { path: '/received-items', label: 'Received', icon: '\u2610', roles: null },
     { path: '/local-purchases', label: 'Local Purchases', icon: '\u2630', roles: null },
     { path: '/reports', label: 'Reports', icon: '\u2691', roles: ['Admin', 'Manager'] },
     { path: '/audit-logs', label: 'Audit Logs', icon: '\u2699', roles: ['Admin', 'Manager'] },

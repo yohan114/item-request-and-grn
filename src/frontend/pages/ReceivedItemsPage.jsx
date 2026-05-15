@@ -1,13 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { receivedItemsAPI } from '../services/api';
+import { receivedItemsAPI, mrnAPI } from '../services/api';
+import { parseMrnItems } from '../services/utils';
 import { useAuth } from '../context/AuthContext';
 
 function ReceivedItemsPage() {
   const [records, setRecords] = useState([]);
+  const [openMrns, setOpenMrns] = useState([]);
+  const [closedMrns, setClosedMrns] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMrns, setLoadingMrns] = useState(true);
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
+  const [activeTab, setActiveTab] = useState('open');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const { user } = useAuth();
@@ -15,6 +20,7 @@ function ReceivedItemsPage() {
 
   useEffect(() => {
     loadRecords();
+    loadMrnData();
   }, [page, status]);
 
   const loadRecords = async () => {
@@ -31,6 +37,44 @@ function ReceivedItemsPage() {
       console.error('Failed to load received items:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadMrnData = async () => {
+    try {
+      setLoadingMrns(true);
+      const [openRes, closedRes] = await Promise.all([
+        mrnAPI.getAll({ status: 'Approved', limit: 100 }).catch(() => ({ data: { data: [] } })),
+        mrnAPI.getAll({ status: 'Fully Received', limit: 100 }).catch(() => ({ data: { data: [] } }))
+      ]);
+      // Also load Partially Received and Received Pending
+      const [partialRes, pendingRes, closedStatusRes] = await Promise.all([
+        mrnAPI.getAll({ status: 'Partially Received', limit: 100 }).catch(() => ({ data: { data: [] } })),
+        mrnAPI.getAll({ status: 'Received Pending', limit: 100 }).catch(() => ({ data: { data: [] } })),
+        mrnAPI.getAll({ status: 'Closed', limit: 100 }).catch(() => ({ data: { data: [] } }))
+      ]);
+
+      const openData = openRes.data.data;
+      const partialData = partialRes.data.data;
+      const pendingData = pendingRes.data.data;
+      const openList = [
+        ...(Array.isArray(openData) ? openData : (openData?.records || [])),
+        ...(Array.isArray(partialData) ? partialData : (partialData?.records || [])),
+        ...(Array.isArray(pendingData) ? pendingData : (pendingData?.records || []))
+      ];
+      setOpenMrns(openList);
+
+      const closedData = closedRes.data.data;
+      const closedStatusData = closedStatusRes.data.data;
+      const closedList = [
+        ...(Array.isArray(closedData) ? closedData : (closedData?.records || [])),
+        ...(Array.isArray(closedStatusData) ? closedStatusData : (closedStatusData?.records || []))
+      ];
+      setClosedMrns(closedList);
+    } catch (err) {
+      console.error('Failed to load MRN data:', err);
+    } finally {
+      setLoadingMrns(false);
     }
   };
 
@@ -57,16 +101,147 @@ function ReceivedItemsPage() {
     if (typeof details === 'string') {
       try {
         const parsed = JSON.parse(details);
-        return parsed.description || '-';
+        return parsed.description || parsed.item_name || '-';
       } catch (e) {
         return '-';
       }
     }
-    return details.description || '-';
+    return details.description || details.item_name || '-';
+  };
+
+  const getGrnStatusBadgeStyle = (grnStatus) => {
+    switch (grnStatus) {
+      case 'GRN Approved': return { background: '#0d9488', color: '#fff' };
+      case 'GRN Created': return { background: '#6366f1', color: '#fff' };
+      case 'Pending': return { background: '#f59e0b', color: '#fff' };
+      default: return { background: '#94a3b8', color: '#fff' };
+    }
+  };
+
+  const getMrnItemsSummary = (mrn) => {
+    const items = parseMrnItems(mrn.items);
+    const total = items.length;
+    const received = items.filter(i => i.item_status === 'Fully Received' || i.item_status === 'GRN Completed').length;
+    const pending = total - received;
+    return { total, received, pending };
+  };
+
+  const getItemStatusBadgeStyle = (itemStatus) => {
+    switch (itemStatus) {
+      case 'Pending Approval': return { background: '#94a3b8', color: '#fff' };
+      case 'Approved': return { background: '#16a34a', color: '#fff' };
+      case 'Pending Receive': return { background: '#f59e0b', color: '#fff' };
+      case 'Partially Received': return { background: '#d97706', color: '#fff' };
+      case 'Fully Received': return { background: '#059669', color: '#fff' };
+      case 'GRN Pending': return { background: '#6366f1', color: '#fff' };
+      case 'GRN Completed': return { background: '#0d9488', color: '#fff' };
+      default: return { background: '#94a3b8', color: '#fff' };
+    }
+  };
+
+  const renderMrnList = (mrnList, emptyMsg) => {
+    if (loadingMrns) return <div className="loading">Loading MRNs...</div>;
+    if (mrnList.length === 0) {
+      return <p style={{ color: 'var(--gray-500)', fontSize: 14 }}>{emptyMsg}</p>;
+    }
+    return (
+      <div className="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>MRN Number</th>
+              <th>Supplier</th>
+              <th>Status</th>
+              <th>Items</th>
+              <th>Received</th>
+              <th>Pending</th>
+            </tr>
+          </thead>
+          <tbody>
+            {mrnList.map(mrn => {
+              const summary = getMrnItemsSummary(mrn);
+              return (
+                <tr key={mrn.id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/mrns/${mrn.id}`)}>
+                  <td>{mrn.mrn_number}</td>
+                  <td>{mrn.supplier_name || '-'}</td>
+                  <td>
+                    <span className="badge" style={getStatusBadgeStyle(mrn.status)}>{mrn.status}</span>
+                  </td>
+                  <td>{summary.total} item(s)</td>
+                  <td style={{ color: '#16a34a', fontWeight: 600 }}>{summary.received}</td>
+                  <td>
+                    {summary.pending > 0 ? (
+                      <span className="badge" style={{ background: '#f59e0b', color: '#fff' }}>{summary.pending} pending</span>
+                    ) : (
+                      <span style={{ color: '#16a34a', fontWeight: 600 }}>All done</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
+  const getStatusBadgeStyle = (status) => {
+    switch (status) {
+      case 'Draft': return {};
+      case 'Submitted': return { background: '#3b82f6', color: '#fff' };
+      case 'Approved': return { background: '#16a34a', color: '#fff' };
+      case 'Received Pending': return { background: '#f59e0b', color: '#fff' };
+      case 'Partially Received': return { background: '#d97706', color: '#fff' };
+      case 'Fully Received': return { background: '#059669', color: '#fff' };
+      case 'Closed': return { background: '#6b7280', color: '#fff' };
+      default: return {};
+    }
   };
 
   return (
     <div>
+      {/* MRN Tabs Section */}
+      <div className="card">
+        <div className="card-header">
+          <h2>MRN Overview</h2>
+        </div>
+        <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid #e2e8f0', marginBottom: 16 }}>
+          <button
+            type="button"
+            onClick={() => setActiveTab('open')}
+            style={{
+              padding: '10px 20px',
+              border: 'none',
+              background: activeTab === 'open' ? '#3b82f6' : 'transparent',
+              color: activeTab === 'open' ? '#fff' : '#64748b',
+              fontWeight: 600,
+              cursor: 'pointer',
+              borderRadius: '6px 6px 0 0'
+            }}
+          >
+            Open MRNs ({openMrns.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('closed')}
+            style={{
+              padding: '10px 20px',
+              border: 'none',
+              background: activeTab === 'closed' ? '#3b82f6' : 'transparent',
+              color: activeTab === 'closed' ? '#fff' : '#64748b',
+              fontWeight: 600,
+              cursor: 'pointer',
+              borderRadius: '6px 6px 0 0'
+            }}
+          >
+            Closed MRNs ({closedMrns.length})
+          </button>
+        </div>
+        {activeTab === 'open' && renderMrnList(openMrns, 'No open MRNs with pending items.')}
+        {activeTab === 'closed' && renderMrnList(closedMrns, 'No closed MRNs.')}
+      </div>
+
+      {/* Received Items List */}
       <div className="card">
         <div className="card-header">
           <h2>Received Items</h2>
@@ -126,7 +301,7 @@ function ReceivedItemsPage() {
                       <td>{record.received_qty}</td>
                       <td><span className={`badge badge-${(record.status || 'pending').toLowerCase()}`}>{record.status}</span></td>
                       <td>
-                        <span className={`badge badge-${record.grn_status === 'GRN Approved' ? 'approved' : record.grn_status === 'GRN Created' ? 'inspection' : 'pending'}`}>
+                        <span className="badge" style={getGrnStatusBadgeStyle(record.grn_status)}>
                           {record.grn_status || 'Pending'}
                         </span>
                       </td>
