@@ -1,6 +1,6 @@
 const path = require('path');
 const fs = require('fs');
-const { Attachment, LocalPurchase, User } = require('../models');
+const { Attachment, LocalPurchase, MRN, GRN, User } = require('../models');
 const { createAuditLog } = require('../utils/auditLogger');
 const { changeStatus } = require('../services/approvalService');
 
@@ -200,9 +200,173 @@ const deleteAttachment = async (req, res, next) => {
   }
 };
 
+const uploadMRNAttachment = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { attachment_type } = req.body;
+
+    const mrn = await MRN.findByPk(id);
+    if (!mrn) {
+      if (req.file) {
+        fs.unlinkSync(req.file.path);
+      }
+      return res.status(404).json({
+        success: false,
+        message: 'MRN record not found'
+      });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No file uploaded'
+      });
+    }
+
+    const attachment = await Attachment.create({
+      mrn_id: id,
+      file_name: req.file.filename,
+      original_name: req.file.originalname,
+      file_path: req.file.path,
+      file_type: req.file.mimetype,
+      file_size: req.file.size,
+      attachment_type: attachment_type || 'Other',
+      uploaded_by: req.user.id
+    });
+
+    await createAuditLog({
+      user_id: req.user.id,
+      action: 'UPLOAD',
+      entity_type: 'Attachment',
+      entity_id: attachment.id,
+      new_values: { file_name: attachment.original_name, attachment_type: attachment.attachment_type, mrn_id: id },
+      ip_address: req.ip
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: 'File uploaded successfully',
+      data: attachment
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const listMRNAttachments = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const mrn = await MRN.findByPk(id);
+    if (!mrn) {
+      return res.status(404).json({
+        success: false,
+        message: 'MRN record not found'
+      });
+    }
+
+    const attachments = await Attachment.findAll({
+      where: { mrn_id: id },
+      include: [{ model: User, as: 'uploader', attributes: ['id', 'username', 'full_name'] }],
+      order: [['created_at', 'DESC']]
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: attachments
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const uploadGRNAttachment = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { attachment_type } = req.body;
+
+    const grn = await GRN.findByPk(id);
+    if (!grn) {
+      if (req.file) {
+        fs.unlinkSync(req.file.path);
+      }
+      return res.status(404).json({
+        success: false,
+        message: 'GRN record not found'
+      });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No file uploaded'
+      });
+    }
+
+    const attachment = await Attachment.create({
+      grn_id: id,
+      file_name: req.file.filename,
+      original_name: req.file.originalname,
+      file_path: req.file.path,
+      file_type: req.file.mimetype,
+      file_size: req.file.size,
+      attachment_type: attachment_type || 'Other',
+      uploaded_by: req.user.id
+    });
+
+    await createAuditLog({
+      user_id: req.user.id,
+      action: 'UPLOAD',
+      entity_type: 'Attachment',
+      entity_id: attachment.id,
+      new_values: { file_name: attachment.original_name, attachment_type: attachment.attachment_type, grn_id: id },
+      ip_address: req.ip
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: 'File uploaded successfully',
+      data: attachment
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const listGRNAttachments = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const grn = await GRN.findByPk(id);
+    if (!grn) {
+      return res.status(404).json({
+        success: false,
+        message: 'GRN record not found'
+      });
+    }
+
+    const attachments = await Attachment.findAll({
+      where: { grn_id: id },
+      include: [{ model: User, as: 'uploader', attributes: ['id', 'username', 'full_name'] }],
+      order: [['created_at', 'DESC']]
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: attachments
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   uploadAttachment,
   listAttachments,
   downloadAttachment,
-  deleteAttachment
+  deleteAttachment,
+  uploadMRNAttachment,
+  listMRNAttachments,
+  uploadGRNAttachment,
+  listGRNAttachments
 };

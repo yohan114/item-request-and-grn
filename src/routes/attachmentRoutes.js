@@ -7,7 +7,11 @@ const {
   uploadAttachment,
   listAttachments,
   downloadAttachment,
-  deleteAttachment
+  deleteAttachment,
+  uploadMRNAttachment,
+  listMRNAttachments,
+  uploadGRNAttachment,
+  listGRNAttachments
 } = require('../controllers/attachmentController');
 
 // Upload attachment - Store Keeper, Manager, Admin
@@ -24,6 +28,36 @@ router.get(
   '/local-purchases/:id/attachments',
   authenticate,
   listAttachments
+);
+
+// MRN Attachments
+router.post(
+  '/mrns/:id/attachments',
+  authenticate,
+  authorize('Admin', 'Manager', 'Store Keeper'),
+  upload.single('file'),
+  uploadMRNAttachment
+);
+
+router.get(
+  '/mrns/:id/attachments',
+  authenticate,
+  listMRNAttachments
+);
+
+// GRN Attachments
+router.post(
+  '/grns/:id/attachments',
+  authenticate,
+  authorize('Admin', 'Manager', 'Store Keeper'),
+  upload.single('file'),
+  uploadGRNAttachment
+);
+
+router.get(
+  '/grns/:id/attachments',
+  authenticate,
+  listGRNAttachments
 );
 
 // Download attachment - all authenticated users

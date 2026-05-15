@@ -9,7 +9,15 @@ module.exports = (sequelize) => {
     },
     local_purchase_id: {
       type: DataTypes.UUID,
-      allowNull: false
+      allowNull: true
+    },
+    mrn_id: {
+      type: DataTypes.UUID,
+      allowNull: true
+    },
+    grn_id: {
+      type: DataTypes.UUID,
+      allowNull: true
     },
     file_name: {
       type: DataTypes.STRING,

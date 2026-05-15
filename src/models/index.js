@@ -35,6 +35,8 @@ const LocalPurchase = require('./LocalPurchase')(sequelize);
 const Attachment = require('./Attachment')(sequelize);
 const ApprovalHistory = require('./ApprovalHistory')(sequelize);
 const AuditLog = require('./AuditLog')(sequelize);
+const MRN = require('./MRN')(sequelize);
+const GRN = require('./GRN')(sequelize);
 
 // Define associations
 User.hasMany(LocalPurchase, { foreignKey: 'created_by', as: 'purchases' });
@@ -55,6 +57,25 @@ ApprovalHistory.belongsTo(User, { foreignKey: 'action_by', as: 'actor' });
 User.hasMany(AuditLog, { foreignKey: 'user_id', as: 'auditLogs' });
 AuditLog.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 
+// MRN associations
+User.hasMany(MRN, { foreignKey: 'created_by', as: 'mrns' });
+MRN.belongsTo(User, { foreignKey: 'created_by', as: 'creator' });
+
+// GRN associations
+User.hasMany(GRN, { foreignKey: 'created_by', as: 'grns' });
+GRN.belongsTo(User, { foreignKey: 'created_by', as: 'grnCreator' });
+
+// MRN-GRN relationship
+MRN.hasMany(GRN, { foreignKey: 'mrn_id', as: 'grns' });
+GRN.belongsTo(MRN, { foreignKey: 'mrn_id', as: 'mrn' });
+
+// MRN/GRN attachments
+MRN.hasMany(Attachment, { foreignKey: 'mrn_id', as: 'attachments' });
+Attachment.belongsTo(MRN, { foreignKey: 'mrn_id', as: 'mrnRecord' });
+
+GRN.hasMany(Attachment, { foreignKey: 'grn_id', as: 'attachments' });
+Attachment.belongsTo(GRN, { foreignKey: 'grn_id', as: 'grnRecord' });
+
 const db = {
   sequelize,
   Sequelize,
@@ -62,7 +83,9 @@ const db = {
   LocalPurchase,
   Attachment,
   ApprovalHistory,
-  AuditLog
+  AuditLog,
+  MRN,
+  GRN
 };
 
 module.exports = db;

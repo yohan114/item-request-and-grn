@@ -9,6 +9,8 @@ const pdfRoutes = require('./pdfRoutes');
 const approvalRoutes = require('./approvalRoutes');
 const auditLogRoutes = require('./auditLogRoutes');
 const reportRoutes = require('./reportRoutes');
+const mrnRoutes = require('./mrnRoutes');
+const grnRoutes = require('./grnRoutes');
 
 router.use('/auth', authRoutes);
 router.use('/users', userRoutes);
@@ -18,6 +20,8 @@ router.use('/', attachmentRoutes);
 router.use('/', pdfRoutes);
 router.use('/audit-logs', auditLogRoutes);
 router.use('/reports', reportRoutes);
+router.use('/mrns', mrnRoutes);
+router.use('/grns', grnRoutes);
 
 // Health check
 router.get('/health', (req, res) => {
