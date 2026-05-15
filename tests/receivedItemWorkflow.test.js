@@ -215,6 +215,81 @@ describe('Received Items - Partial and Full Receive Workflow', () => {
   });
 });
 
+describe('Received Items - Over-receive enforcement', () => {
+  let overReceiveMRNId, overReceiveMRNNumber;
+
+  beforeAll(async () => {
+    const mrnRes = await request(app)
+      .post('/api/mrns')
+      .set('Authorization', `Bearer ${storeKeeperToken}`)
+      .send({
+        request_for: 'Over-receive Test',
+        items: [
+          { item_name: 'Limited Item', description: 'Only 10 allowed', quantity: 10, unit: 'pcs' }
+        ]
+      });
+    overReceiveMRNId = mrnRes.body.data.id;
+    overReceiveMRNNumber = mrnRes.body.data.mrn_number;
+
+    await request(app)
+      .post(`/api/mrns/${overReceiveMRNId}/submit`)
+      .set('Authorization', `Bearer ${storeKeeperToken}`);
+
+    await request(app)
+      .post(`/api/mrns/${overReceiveMRNId}/approve`)
+      .set('Authorization', `Bearer ${engineerToken}`)
+      .send({ approval_remarks: 'Approved' });
+  });
+
+  it('should reject received_qty that exceeds remaining quantity', async () => {
+    // First receive 7 of 10
+    const firstRes = await request(app)
+      .post('/api/received-items')
+      .set('Authorization', `Bearer ${storeKeeperToken}`)
+      .send({
+        mrn_id: overReceiveMRNId,
+        mrn_number: overReceiveMRNNumber,
+        item_details: { item_name: 'Limited Item', description: 'Only 10 allowed', quantity: 10 },
+        received_qty: 7,
+        item_index: 0
+      });
+    expect(firstRes.status).toBe(201);
+
+    // Try to receive 5 more (only 3 remaining)
+    const overRes = await request(app)
+      .post('/api/received-items')
+      .set('Authorization', `Bearer ${storeKeeperToken}`)
+      .send({
+        mrn_id: overReceiveMRNId,
+        mrn_number: overReceiveMRNNumber,
+        item_details: { item_name: 'Limited Item', description: 'Only 10 allowed', quantity: 10 },
+        received_qty: 5,
+        item_index: 0
+      });
+
+    expect(overRes.status).toBe(400);
+    expect(overRes.body.success).toBe(false);
+    expect(overRes.body.message).toMatch(/exceeds remaining quantity/i);
+  });
+
+  it('should allow received_qty exactly equal to remaining quantity', async () => {
+    // Remaining is 3 (10 - 7), receive exactly 3
+    const exactRes = await request(app)
+      .post('/api/received-items')
+      .set('Authorization', `Bearer ${storeKeeperToken}`)
+      .send({
+        mrn_id: overReceiveMRNId,
+        mrn_number: overReceiveMRNNumber,
+        item_details: { item_name: 'Limited Item', description: 'Only 10 allowed', quantity: 10 },
+        received_qty: 3,
+        item_index: 0
+      });
+
+    expect(exactRes.status).toBe(201);
+    expect(exactRes.body.success).toBe(true);
+  });
+});
+
 describe('Received Items - item_index tracking', () => {
   let indexMRNId;
 

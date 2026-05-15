@@ -3,7 +3,7 @@ const { Op } = require('sequelize');
 const { GRN, User, Attachment, ReceivedItem, MRN, sequelize } = require('../models');
 const { createGRNWithRetry } = require('../services/grnService');
 const { createAuditLog } = require('../utils/auditLogger');
-const { parseItems, getItemIdentifier, parseItemDetails } = require('../utils/pendingItemsHelper');
+const { parseItems, getItemIdentifier, parseItemDetails, receivedItemMatchesMrnItem } = require('../utils/pendingItemsHelper');
 
 const createValidation = [
   body('supplier_name').trim().notEmpty().withMessage('Supplier name is required'),
@@ -503,10 +503,7 @@ const approveGRN = async (req, res, next) => {
           const updatedItems = mrnItems.map((item, index) => {
             const itemId = getItemIdentifier(item);
             // Check if any of the linked received items correspond to this MRN item
-            const hasLinkedRI = linkedReceivedItems.some(ri => {
-              const riDetails = typeof ri.item_details === 'string' ? JSON.parse(ri.item_details) : ri.item_details;
-              return getItemIdentifier(riDetails || {}) === itemId || ri.item_index === index;
-            });
+            const hasLinkedRI = linkedReceivedItems.some(ri => receivedItemMatchesMrnItem(ri, index, itemId));
             if (hasLinkedRI) {
               return { ...item, item_status: 'GRN Completed' };
             }
