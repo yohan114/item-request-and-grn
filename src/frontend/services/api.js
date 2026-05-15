@@ -108,8 +108,22 @@ export const mrnAPI = {
 export const grnAPI = {
   getAll: (params) => api.get('/grns', { params }),
   getById: (id) => api.get(`/grns/${id}`),
-  create: (data) => api.post('/grns', data),
-  update: (id, data) => api.put(`/grns/${id}`, data),
+  create: (data) => {
+    if (data instanceof FormData) {
+      return api.post('/grns', data, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+    }
+    return api.post('/grns', data);
+  },
+  update: (id, data) => {
+    if (data instanceof FormData) {
+      return api.put(`/grns/${id}`, data, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+    }
+    return api.put(`/grns/${id}`, data);
+  },
   delete: (id) => api.delete(`/grns/${id}`)
 };
 

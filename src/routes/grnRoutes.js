@@ -3,6 +3,7 @@ const router = express.Router();
 const { authenticate } = require('../middleware/auth');
 const { authorize } = require('../middleware/rbac');
 const { validate } = require('../middleware/validate');
+const { upload } = require('../middleware/upload');
 const {
   create,
   list,
@@ -13,6 +14,21 @@ const {
   updateValidation
 } = require('../controllers/grnController');
 
+// Middleware to parse items JSON string from multipart form data
+const parseItemsField = (req, res, next) => {
+  if (req.body.items && typeof req.body.items === 'string') {
+    try {
+      req.body.items = JSON.parse(req.body.items);
+    } catch (e) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid items format'
+      });
+    }
+  }
+  next();
+};
+
 // All routes require authentication
 router.use(authenticate);
 
@@ -20,6 +36,8 @@ router.use(authenticate);
 router.post(
   '/',
   authorize('Store Keeper', 'Manager', 'Admin'),
+  upload.single('invoice_file'),
+  parseItemsField,
   validate(createValidation),
   create
 );
@@ -42,6 +60,8 @@ router.get(
 router.put(
   '/:id',
   authorize('Store Keeper', 'Manager', 'Admin'),
+  upload.single('invoice_file'),
+  parseItemsField,
   validate(updateValidation),
   update
 );

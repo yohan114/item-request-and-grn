@@ -19,6 +19,8 @@ function GRNFormPage() {
     approval_person_designation: ''
   });
   const [items, setItems] = useState([{ item_no: '', description: '', qty: '', price: '' }]);
+  const [invoiceFile, setInvoiceFile] = useState(null);
+  const [existingInvoice, setExistingInvoice] = useState(null);
 
   const today = new Date().toLocaleDateString();
 
@@ -41,6 +43,9 @@ function GRNFormPage() {
         approval_person_name: data.approval_person_name || '',
         approval_person_designation: data.approval_person_designation || ''
       });
+      if (data.invoice_attachment) {
+        setExistingInvoice(data.invoice_attachment);
+      }
       const parsedItems = parseMrnItems(data.items);
       if (parsedItems.length > 0) {
         setItems(parsedItems.map(item => ({
@@ -109,25 +114,28 @@ function GRNFormPage() {
 
     try {
       setSaving(true);
-      const payload = {
-        supplier_name: form.supplier_name,
-        project_name: form.project_name || undefined,
-        items: items.map(item => ({
-          item_no: item.item_no,
-          description: item.description,
-          qty: parseFloat(item.qty),
-          price: parseFloat(item.price)
-        })),
-        request_person_name: form.request_person_name || undefined,
-        request_person_designation: form.request_person_designation || undefined,
-        approval_person_name: form.approval_person_name || undefined,
-        approval_person_designation: form.approval_person_designation || undefined
-      };
+      const formData = new FormData();
+      formData.append('supplier_name', form.supplier_name);
+      if (form.project_name) formData.append('project_name', form.project_name);
+      formData.append('items', JSON.stringify(items.map(item => ({
+        item_no: item.item_no,
+        description: item.description,
+        qty: parseFloat(item.qty),
+        price: parseFloat(item.price)
+      }))));
+      if (form.request_person_name) formData.append('request_person_name', form.request_person_name);
+      if (form.request_person_designation) formData.append('request_person_designation', form.request_person_designation);
+      if (form.approval_person_name) formData.append('approval_person_name', form.approval_person_name);
+      if (form.approval_person_designation) formData.append('approval_person_designation', form.approval_person_designation);
+
+      if (invoiceFile) {
+        formData.append('invoice_file', invoiceFile);
+      }
 
       if (isEdit) {
-        await grnAPI.update(id, payload);
+        await grnAPI.update(id, formData);
       } else {
-        await grnAPI.create(payload);
+        await grnAPI.create(formData);
       }
       navigate('/grns');
     } catch (err) {
@@ -314,6 +322,26 @@ function GRNFormPage() {
                 placeholder="Designation"
               />
             </div>
+          </div>
+
+          <div className="form-group">
+            <label>Invoice Attachment (JPG, PNG, PDF)</label>
+            {existingInvoice && !invoiceFile && (
+              <div style={{ marginBottom: 8, padding: '8px 12px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 6 }}>
+                <span style={{ color: '#166534', fontSize: 14 }}>Current file: {existingInvoice}</span>
+              </div>
+            )}
+            <input
+              type="file"
+              className="form-control"
+              accept=".jpg,.jpeg,.png,.pdf"
+              onChange={(e) => setInvoiceFile(e.target.files[0] || null)}
+            />
+            {invoiceFile && (
+              <div style={{ marginTop: 6, fontSize: 13, color: 'var(--gray-600)' }}>
+                Selected: {invoiceFile.name} ({(invoiceFile.size / 1024).toFixed(1)} KB)
+              </div>
+            )}
           </div>
 
           <div className="btn-group mt-2">

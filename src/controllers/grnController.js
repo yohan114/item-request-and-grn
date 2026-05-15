@@ -44,7 +44,7 @@ const create = async (req, res, next) => {
       approval_person_designation
     } = req.body;
 
-    const grn = await createGRNWithRetry({
+    const grnData = {
       supplier_name,
       project_name: project_name || null,
       items,
@@ -53,7 +53,14 @@ const create = async (req, res, next) => {
       approval_person_name: approval_person_name || null,
       approval_person_designation: approval_person_designation || null,
       created_by: req.user.id
-    });
+    };
+
+    // Handle invoice attachment file
+    if (req.file) {
+      grnData.invoice_attachment = req.file.filename;
+    }
+
+    const grn = await createGRNWithRetry(grnData);
 
     await createAuditLog({
       user_id: req.user.id,
@@ -203,6 +210,11 @@ const update = async (req, res, next) => {
       if (req.body[field] !== undefined) {
         updateData[field] = req.body[field];
       }
+    }
+
+    // Handle invoice attachment file
+    if (req.file) {
+      updateData.invoice_attachment = req.file.filename;
     }
 
     await grn.update(updateData);

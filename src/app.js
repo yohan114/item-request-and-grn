@@ -22,6 +22,10 @@ const distPath = path.join(__dirname, '..', 'public', 'dist');
 app.use(express.static(distPath));
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
+// Serve uploaded files
+const uploadsPath = path.join(__dirname, '..', 'uploads');
+app.use('/uploads', express.static(uploadsPath));
+
 // API routes
 app.use('/api', routes);
 

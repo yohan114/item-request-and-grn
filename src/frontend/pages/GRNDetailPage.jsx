@@ -190,6 +190,47 @@ function GRNDetailPage() {
         </div>
       </div>
 
+      {/* Invoice Attachment */}
+      {record.invoice_attachment && (
+        <div className="card">
+          <div className="card-header">
+            <h2>Invoice Attachment</h2>
+          </div>
+          <div style={{ padding: '12px 0' }}>
+            {record.invoice_attachment.match(/\.(jpg|jpeg|png)$/i) ? (
+              <div>
+                <img
+                  src={`/uploads/${record.invoice_attachment}`}
+                  alt="Invoice"
+                  style={{ maxWidth: '100%', maxHeight: 400, borderRadius: 6, border: '1px solid var(--gray-200)' }}
+                />
+                <div style={{ marginTop: 8 }}>
+                  <a
+                    href={`/uploads/${record.invoice_attachment}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn btn-secondary btn-sm"
+                  >
+                    View Full Image
+                  </a>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <a
+                  href={`/uploads/${record.invoice_attachment}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn btn-secondary btn-sm"
+                >
+                  View / Download Invoice ({record.invoice_attachment.split('.').pop().toUpperCase()})
+                </a>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Attachments */}
       <div className="card">
         <div className="card-header">

@@ -56,6 +56,10 @@ module.exports = (sequelize) => {
       type: DataTypes.STRING,
       allowNull: true
     },
+    invoice_attachment: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
     status: {
       type: DataTypes.ENUM('Pending', 'Inspection', 'Completed', 'Rejected'),
       defaultValue: 'Pending'
