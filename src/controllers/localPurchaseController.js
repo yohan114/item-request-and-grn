@@ -240,8 +240,7 @@ const update = async (req, res, next) => {
       'quantity', 'unit_price', 'invoice_number', 'invoice_date',
       'received_date', 'remarks', 'received_quantity', 'checked_quantity',
       'accepted_quantity', 'rejected_quantity', 'store_confirmation',
-      'grn_remarks', 'manual_mrn_reference', 'store_received',
-      'invoice_attached', 'grn_completed'
+      'grn_remarks', 'manual_mrn_reference'
     ];
 
     for (const field of allowedFields) {
@@ -250,9 +249,53 @@ const update = async (req, res, next) => {
       }
     }
 
-    // When store_confirmation is set to true, also set store_received = true
+    // Quantity integrity validation
+    const receivedQty = updateData.received_quantity !== undefined
+      ? parseFloat(updateData.received_quantity)
+      : (purchase.received_quantity !== null ? parseFloat(purchase.received_quantity) : null);
+    const checkedQty = updateData.checked_quantity !== undefined
+      ? parseFloat(updateData.checked_quantity)
+      : (purchase.checked_quantity !== null ? parseFloat(purchase.checked_quantity) : null);
+    const acceptedQty = updateData.accepted_quantity !== undefined
+      ? parseFloat(updateData.accepted_quantity)
+      : (purchase.accepted_quantity !== null ? parseFloat(purchase.accepted_quantity) : null);
+    const rejectedQty = updateData.rejected_quantity !== undefined
+      ? parseFloat(updateData.rejected_quantity)
+      : (purchase.rejected_quantity !== null ? parseFloat(purchase.rejected_quantity) : null);
+
+    // Validate non-negative quantities
+    if (receivedQty !== null && receivedQty < 0) {
+      return res.status(400).json({ success: false, message: 'received_quantity must be >= 0' });
+    }
+    if (checkedQty !== null && checkedQty < 0) {
+      return res.status(400).json({ success: false, message: 'checked_quantity must be >= 0' });
+    }
+    if (acceptedQty !== null && acceptedQty < 0) {
+      return res.status(400).json({ success: false, message: 'accepted_quantity must be >= 0' });
+    }
+    if (rejectedQty !== null && rejectedQty < 0) {
+      return res.status(400).json({ success: false, message: 'rejected_quantity must be >= 0' });
+    }
+
+    // Validate quantity relationships
+    if (receivedQty !== null) {
+      if (checkedQty !== null && checkedQty > receivedQty) {
+        return res.status(400).json({ success: false, message: 'checked_quantity cannot exceed received_quantity' });
+      }
+      if (acceptedQty !== null && rejectedQty !== null && (acceptedQty + rejectedQty) > receivedQty) {
+        return res.status(400).json({ success: false, message: 'accepted_quantity + rejected_quantity cannot exceed received_quantity' });
+      }
+    }
+
+    // GRN completion logic: when store_confirmation is true AND all quantity fields are provided,
+    // auto-set grn_completed and store_received
     if (updateData.store_confirmation === true) {
       updateData.store_received = true;
+      if (receivedQty !== null && receivedQty > 0 &&
+          checkedQty !== null &&
+          acceptedQty !== null) {
+        updateData.grn_completed = true;
+      }
     }
 
     // Recalculate total_amount if quantity or unit_price changed

@@ -254,7 +254,7 @@ function LocalPurchaseDetailPage() {
   const canApprove = ['Admin', 'Manager'].includes(user?.role) && record.status === 'Pending Approval';
   const canComplete = ['Admin', 'Manager', 'Store Keeper'].includes(user?.role) && record.status === 'Approved';
   const canAdvance = ['Admin', 'Manager', 'Store Keeper'].includes(user?.role) && STATUS_TRANSITIONS[record.status];
-  const showGRNSection = ['GRN Pending', 'Invoice Attached'].includes(record.status) && ['Admin', 'Manager', 'Store Keeper'].includes(user?.role);
+  const showGRNSection = ['Invoice Attached'].includes(record.status) && ['Admin', 'Manager', 'Store Keeper'].includes(user?.role);
 
   // Check conditions for advance buttons
   const canAdvanceNow = (() => {

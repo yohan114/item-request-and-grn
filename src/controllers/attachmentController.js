@@ -2,6 +2,7 @@ const path = require('path');
 const fs = require('fs');
 const { Attachment, LocalPurchase, User } = require('../models');
 const { createAuditLog } = require('../utils/auditLogger');
+const { changeStatus } = require('../services/approvalService');
 
 const uploadAttachment = async (req, res, next) => {
   try {
@@ -49,31 +50,30 @@ const uploadAttachment = async (req, res, next) => {
 
     // Auto-advance: if MRN attachment uploaded and purchase is at 'MRN Created', advance to 'MRN Uploaded'
     if ((attachment_type === 'Manual MRN Photo' || attachment_type === 'Manual MRN Scanned Copy') && purchase.status === 'MRN Created') {
-      const oldStatus = purchase.status;
-      await purchase.update({ status: 'MRN Uploaded' });
-      await createAuditLog({
-        user_id: req.user.id,
-        action: 'STATUS_CHANGE_MRN_UPLOADED',
-        entity_type: 'LocalPurchase',
-        entity_id: purchase.id,
-        old_values: { status: oldStatus },
-        new_values: { status: 'MRN Uploaded' },
-        ip_address: req.ip
+      await changeStatus({
+        purchaseId: purchase.id,
+        newStatus: 'MRN Uploaded',
+        userId: req.user.id,
+        remarks: 'Auto-advanced on MRN attachment upload',
+        ipAddress: req.ip
       });
     }
 
     // Auto-update: if Invoice attachment uploaded, set invoice_attached = true
     if (attachment_type === 'Invoice') {
-      await purchase.update({ invoice_attached: true });
-      await createAuditLog({
-        user_id: req.user.id,
-        action: 'UPDATE',
-        entity_type: 'LocalPurchase',
-        entity_id: purchase.id,
-        old_values: { invoice_attached: false },
-        new_values: { invoice_attached: true },
-        ip_address: req.ip
-      });
+      const currentInvoiceAttached = purchase.invoice_attached;
+      if (!currentInvoiceAttached) {
+        await purchase.update({ invoice_attached: true });
+        await createAuditLog({
+          user_id: req.user.id,
+          action: 'UPDATE',
+          entity_type: 'LocalPurchase',
+          entity_id: purchase.id,
+          old_values: { invoice_attached: false },
+          new_values: { invoice_attached: true },
+          ip_address: req.ip
+        });
+      }
     }
 
     return res.status(201).json({
