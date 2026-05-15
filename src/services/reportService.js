@@ -1,6 +1,6 @@
 const { Op } = require('sequelize');
 const PDFDocument = require('pdfkit');
-const { LocalPurchase, User, sequelize } = require('../models');
+const { LocalPurchase, User, MRN, GRN, sequelize } = require('../models');
 
 const buildWhereClause = (filters) => {
   const where = {};
@@ -182,8 +182,78 @@ const getSummaryStats = async (filters = {}) => {
   };
 };
 
+const getMRNSummaryStats = async (filters = {}) => {
+  const where = {};
+
+  if (filters.status) {
+    where.status = filters.status;
+  }
+  if (filters.supplier_name) {
+    where.supplier_name = { [Op.like]: `%${filters.supplier_name}%` };
+  }
+  if (filters.date_from || filters.date_to) {
+    where.created_at = {};
+    if (filters.date_from) {
+      where.created_at[Op.gte] = new Date(filters.date_from);
+    }
+    if (filters.date_to) {
+      where.created_at[Op.lte] = new Date(filters.date_to + 'T23:59:59.999Z');
+    }
+  }
+
+  const records = await MRN.findAll({ where });
+
+  const total = records.length;
+  const byStatus = {};
+
+  for (const record of records) {
+    byStatus[record.status] = (byStatus[record.status] || 0) + 1;
+  }
+
+  return {
+    total,
+    by_status: byStatus
+  };
+};
+
+const getGRNSummaryStats = async (filters = {}) => {
+  const where = {};
+
+  if (filters.status) {
+    where.status = filters.status;
+  }
+  if (filters.supplier_name) {
+    where.supplier_name = { [Op.like]: `%${filters.supplier_name}%` };
+  }
+  if (filters.date_from || filters.date_to) {
+    where.created_at = {};
+    if (filters.date_from) {
+      where.created_at[Op.gte] = new Date(filters.date_from);
+    }
+    if (filters.date_to) {
+      where.created_at[Op.lte] = new Date(filters.date_to + 'T23:59:59.999Z');
+    }
+  }
+
+  const records = await GRN.findAll({ where });
+
+  const total = records.length;
+  const byStatus = {};
+
+  for (const record of records) {
+    byStatus[record.status] = (byStatus[record.status] || 0) + 1;
+  }
+
+  return {
+    total,
+    by_status: byStatus
+  };
+};
+
 module.exports = {
   generateCSVReport,
   generatePDFReport,
-  getSummaryStats
+  getSummaryStats,
+  getMRNSummaryStats,
+  getGRNSummaryStats
 };

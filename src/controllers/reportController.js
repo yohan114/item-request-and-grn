@@ -1,4 +1,4 @@
-const { generateCSVReport, generatePDFReport, getSummaryStats } = require('../services/reportService');
+const { generateCSVReport, generatePDFReport, getSummaryStats, getMRNSummaryStats, getGRNSummaryStats } = require('../services/reportService');
 
 const exportReport = async (req, res, next) => {
   try {
@@ -50,7 +50,51 @@ const summary = async (req, res, next) => {
   }
 };
 
+const mrnSummary = async (req, res, next) => {
+  try {
+    const { status, supplier_name, date_from, date_to } = req.query;
+
+    const filters = {};
+    if (status) filters.status = status;
+    if (supplier_name) filters.supplier_name = supplier_name;
+    if (date_from) filters.date_from = date_from;
+    if (date_to) filters.date_to = date_to;
+
+    const stats = await getMRNSummaryStats(filters);
+
+    res.json({
+      success: true,
+      data: stats
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const grnSummary = async (req, res, next) => {
+  try {
+    const { status, supplier_name, date_from, date_to } = req.query;
+
+    const filters = {};
+    if (status) filters.status = status;
+    if (supplier_name) filters.supplier_name = supplier_name;
+    if (date_from) filters.date_from = date_from;
+    if (date_to) filters.date_to = date_to;
+
+    const stats = await getGRNSummaryStats(filters);
+
+    res.json({
+      success: true,
+      data: stats
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   exportReport,
-  summary
+  summary,
+  mrnSummary,
+  grnSummary
 };
