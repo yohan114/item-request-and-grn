@@ -1,8 +1,15 @@
-const { LocalPurchase, ApprovalHistory, User } = require('../models');
+const { LocalPurchase, ApprovalHistory, User, Attachment } = require('../models');
 const { createAuditLog } = require('../utils/auditLogger');
 
 const VALID_TRANSITIONS = {
-  'Pending': ['Approved', 'Rejected'],
+  'MRN Created': ['MRN Uploaded'],
+  'MRN Uploaded': ['Item Purchased'],
+  'Item Purchased': ['Goods Received at Stores'],
+  'Goods Received at Stores': ['GRN Pending'],
+  'GRN Pending': ['Invoice Attached'],
+  'Invoice Attached': ['GRN Completed'],
+  'GRN Completed': ['Pending Approval'],
+  'Pending Approval': ['Approved', 'Rejected'],
   'Approved': ['Completed'],
   'Rejected': [],
   'Completed': []
@@ -48,6 +55,58 @@ const changeStatus = async ({ purchaseId, newStatus, userId, remarks, ipAddress 
     };
   }
 
+  // Business rule: Before transitioning to 'MRN Uploaded', check for MRN attachment
+  if (newStatus === 'MRN Uploaded') {
+    const mrnAttachment = await Attachment.findOne({
+      where: {
+        local_purchase_id: purchaseId,
+        attachment_type: ['Manual MRN Photo', 'Manual MRN Scanned Copy']
+      }
+    });
+    if (!mrnAttachment) {
+      return {
+        success: false,
+        status: 400,
+        message: 'Cannot advance to MRN Uploaded: a Manual MRN Photo or Manual MRN Scanned Copy attachment is required'
+      };
+    }
+  }
+
+  // Business rule: Before transitioning to 'GRN Completed', check invoice_attached
+  if (newStatus === 'GRN Completed') {
+    if (!purchase.invoice_attached) {
+      return {
+        success: false,
+        status: 400,
+        message: 'Cannot advance to GRN Completed: invoice must be attached first'
+      };
+    }
+  }
+
+  // Business rule: Before transitioning to 'Completed', check grn_completed, invoice_attached, and MRN attachment
+  if (newStatus === 'Completed') {
+    if (!purchase.grn_completed || !purchase.invoice_attached) {
+      return {
+        success: false,
+        status: 400,
+        message: 'Cannot complete: GRN must be completed and invoice must be attached'
+      };
+    }
+    const mrnAttachment = await Attachment.findOne({
+      where: {
+        local_purchase_id: purchaseId,
+        attachment_type: ['Manual MRN Photo', 'Manual MRN Scanned Copy']
+      }
+    });
+    if (!mrnAttachment) {
+      return {
+        success: false,
+        status: 400,
+        message: 'Cannot complete: a Manual MRN attachment is required'
+      };
+    }
+  }
+
   const oldStatus = purchase.status;
 
   await purchase.update({ status: newStatus });
@@ -61,7 +120,7 @@ const changeStatus = async ({ purchaseId, newStatus, userId, remarks, ipAddress 
 
   await createAuditLog({
     user_id: userId,
-    action: `STATUS_CHANGE_${newStatus.toUpperCase()}`,
+    action: `STATUS_CHANGE_${newStatus.toUpperCase().replace(/ /g, '_')}`,
     entity_type: 'LocalPurchase',
     entity_id: purchaseId,
     old_values: { status: oldStatus },

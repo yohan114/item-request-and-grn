@@ -143,8 +143,8 @@ const generateMRNSheet = (localPurchase) => {
       doc.font('Helvetica-Bold').fontSize(10).text('Received Date:', 50, doc.y);
       doc.font('Helvetica').text(localPurchase.received_date || 'N/A', 160, doc.y);
       doc.moveDown(0.5);
-      doc.font('Helvetica-Bold').text('Remarks:', 50, doc.y);
-      doc.font('Helvetica').text(localPurchase.remarks || 'N/A', 160, doc.y);
+      doc.font('Helvetica-Bold').text('Purchase Reason / Remarks:', 50, doc.y);
+      doc.font('Helvetica').text(localPurchase.remarks || 'N/A', 210, doc.y);
 
       // Signature table
       drawSignatureTable(doc);
@@ -234,22 +234,26 @@ const generateGRNSheet = (localPurchase) => {
       doc.moveDown(0.5);
 
       const quantity = parseFloat(localPurchase.quantity) || 0;
+      const receivedQty = localPurchase.received_quantity != null ? parseFloat(localPurchase.received_quantity) : quantity;
+      const checkedQty = localPurchase.checked_quantity != null ? parseFloat(localPurchase.checked_quantity) : quantity;
+      const acceptedQty = localPurchase.accepted_quantity != null ? parseFloat(localPurchase.accepted_quantity) : quantity;
+      const rejectedQty = localPurchase.rejected_quantity != null ? parseFloat(localPurchase.rejected_quantity) : 0;
       doc.font('Helvetica-Bold').fontSize(10).text('Received Quantity:', 50, doc.y);
-      doc.font('Helvetica').text(String(quantity), 200, doc.y);
+      doc.font('Helvetica').text(String(receivedQty), 200, doc.y);
       doc.moveDown(0.3);
       doc.font('Helvetica-Bold').text('Checked Quantity:', 50, doc.y);
-      doc.font('Helvetica').text(String(quantity), 200, doc.y);
+      doc.font('Helvetica').text(String(checkedQty), 200, doc.y);
       doc.moveDown(0.3);
       doc.font('Helvetica-Bold').text('Accepted Quantity:', 50, doc.y);
-      doc.font('Helvetica').text(String(quantity), 200, doc.y);
+      doc.font('Helvetica').text(String(acceptedQty), 200, doc.y);
       doc.moveDown(0.3);
       doc.font('Helvetica-Bold').text('Rejected Quantity:', 50, doc.y);
-      doc.font('Helvetica').text('0', 200, doc.y);
+      doc.font('Helvetica').text(String(rejectedQty), 200, doc.y);
       doc.moveDown(0.8);
 
       // Remarks
-      doc.font('Helvetica-Bold').text('Remarks:', 50, doc.y);
-      doc.font('Helvetica').text(localPurchase.remarks || 'N/A', 160, doc.y);
+      doc.font('Helvetica-Bold').text('GRN Remarks:', 50, doc.y);
+      doc.font('Helvetica').text(localPurchase.grn_remarks || localPurchase.remarks || 'N/A', 160, doc.y);
 
       // Signature table
       drawSignatureTable(doc);

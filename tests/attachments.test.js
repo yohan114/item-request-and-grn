@@ -134,7 +134,7 @@ describe('Attachments - Upload', () => {
     const res = await request(app)
       .post(`/api/local-purchases/${testPurchase.id}/attachments`)
       .set('Authorization', `Bearer ${storeKeeperToken}`)
-      .field('attachment_type', 'MRN')
+      .field('attachment_type', 'Manual MRN Photo')
       .attach('file', testFilePath, { filename: 'document.png', contentType: 'image/png' });
 
     if (fs.existsSync(testFilePath)) {

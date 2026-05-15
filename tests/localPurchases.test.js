@@ -173,7 +173,7 @@ describe('Local Purchases - List with Pagination', () => {
         total_amount: (i + 1) * 10.00,
         mrn_number: `MRN-20240101-${String(100 + i).padStart(4, '0')}`,
         grn_number: `GRN-20240101-${String(100 + i).padStart(4, '0')}`,
-        status: i < 5 ? 'Pending' : i < 10 ? 'Approved' : 'Completed',
+        status: i < 5 ? 'MRN Created' : i < 10 ? 'Approved' : 'Completed',
         created_by: adminUser.id
       });
     }

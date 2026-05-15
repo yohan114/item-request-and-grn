@@ -47,6 +47,11 @@ beforeAll(async () => {
     invoice_date: '2024-03-10',
     received_date: '2024-03-15',
     remarks: 'Test purchase for PDF generation',
+    received_quantity: 3,
+    checked_quantity: 3,
+    accepted_quantity: 2,
+    rejected_quantity: 1,
+    grn_remarks: 'One unit was damaged during shipping',
     status: 'Completed',
     created_by: adminUser.id
   });

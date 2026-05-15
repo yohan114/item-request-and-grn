@@ -58,10 +58,50 @@ module.exports = (sequelize) => {
       allowNull: true
     },
     status: {
-      type: DataTypes.ENUM('Pending', 'Approved', 'Rejected', 'Completed'),
-      defaultValue: 'Pending'
+      type: DataTypes.ENUM('MRN Created', 'MRN Uploaded', 'Item Purchased', 'Goods Received at Stores', 'GRN Pending', 'Invoice Attached', 'GRN Completed', 'Pending Approval', 'Approved', 'Rejected', 'Completed'),
+      defaultValue: 'MRN Created'
     },
     remarks: {
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
+    store_received: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false
+    },
+    invoice_attached: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false
+    },
+    grn_completed: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false
+    },
+    manual_mrn_reference: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
+    received_quantity: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true
+    },
+    checked_quantity: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true
+    },
+    accepted_quantity: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true
+    },
+    rejected_quantity: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true
+    },
+    store_confirmation: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false
+    },
+    grn_remarks: {
       type: DataTypes.TEXT,
       allowNull: true
     },

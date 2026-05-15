@@ -32,7 +32,7 @@ module.exports = (sequelize) => {
       allowNull: false
     },
     attachment_type: {
-      type: DataTypes.ENUM('MRN', 'GRN', 'Invoice', 'Delivery Note', 'Quotation', 'Payment Proof', 'Signed MRN Sheet', 'Signed GRN Sheet', 'Other'),
+      type: DataTypes.ENUM('Manual MRN Photo', 'Manual MRN Scanned Copy', 'GRN Photo', 'GRN Scanned Copy', 'Invoice', 'Delivery Note', 'Quotation', 'Payment Proof', 'Signed MRN Sheet', 'Signed GRN Sheet', 'Other'),
       allowNull: false
     },
     uploaded_by: {

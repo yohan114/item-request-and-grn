@@ -238,13 +238,21 @@ const update = async (req, res, next) => {
     const allowedFields = [
       'supplier_name', 'purchase_category', 'item_name', 'item_description',
       'quantity', 'unit_price', 'invoice_number', 'invoice_date',
-      'received_date', 'remarks'
+      'received_date', 'remarks', 'received_quantity', 'checked_quantity',
+      'accepted_quantity', 'rejected_quantity', 'store_confirmation',
+      'grn_remarks', 'manual_mrn_reference', 'store_received',
+      'invoice_attached', 'grn_completed'
     ];
 
     for (const field of allowedFields) {
       if (req.body[field] !== undefined) {
         updateData[field] = req.body[field];
       }
+    }
+
+    // When store_confirmation is set to true, also set store_received = true
+    if (updateData.store_confirmation === true) {
+      updateData.store_received = true;
     }
 
     // Recalculate total_amount if quantity or unit_price changed

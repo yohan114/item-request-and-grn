@@ -1,6 +1,6 @@
 const request = require('supertest');
 const app = require('../src/app');
-const { sequelize, User, LocalPurchase } = require('../src/models');
+const { sequelize, User, LocalPurchase, Attachment } = require('../src/models');
 const { hashPassword, generateToken } = require('../src/services/authService');
 
 let adminUser, managerUser, storeKeeperUser, viewerUser;
@@ -56,6 +56,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await LocalPurchase.destroy({ where: {} });
+  await Attachment.destroy({ where: {} });
 
   testPurchase = await LocalPurchase.create({
     supplier_name: 'Test Supplier',
@@ -66,7 +67,7 @@ beforeEach(async () => {
     total_amount: 250.00,
     mrn_number: 'MRN-20240101-0001',
     grn_number: 'GRN-20240101-0001',
-    status: 'Pending',
+    status: 'Pending Approval',
     created_by: storeKeeperUser.id
   });
 });
@@ -77,7 +78,7 @@ afterAll(async () => {
 
 describe('Approval Workflow', () => {
   describe('POST /api/local-purchases/:id/approve', () => {
-    it('should approve a pending record (Manager)', async () => {
+    it('should approve a Pending Approval record (Manager)', async () => {
       const res = await request(app)
         .post(`/api/local-purchases/${testPurchase.id}/approve`)
         .set('Authorization', `Bearer ${managerToken}`)
@@ -88,7 +89,7 @@ describe('Approval Workflow', () => {
       expect(res.body.data.status).toBe('Approved');
     });
 
-    it('should approve a pending record (Admin)', async () => {
+    it('should approve a Pending Approval record (Admin)', async () => {
       const res = await request(app)
         .post(`/api/local-purchases/${testPurchase.id}/approve`)
         .set('Authorization', `Bearer ${adminToken}`)
@@ -143,7 +144,7 @@ describe('Approval Workflow', () => {
   });
 
   describe('POST /api/local-purchases/:id/reject', () => {
-    it('should reject a pending record with remarks', async () => {
+    it('should reject a Pending Approval record with remarks', async () => {
       const res = await request(app)
         .post(`/api/local-purchases/${testPurchase.id}/reject`)
         .set('Authorization', `Bearer ${managerToken}`)
@@ -188,8 +189,20 @@ describe('Approval Workflow', () => {
   });
 
   describe('POST /api/local-purchases/:id/complete', () => {
-    it('should complete an approved record', async () => {
-      await testPurchase.update({ status: 'Approved' });
+    it('should complete an approved record with required conditions', async () => {
+      await testPurchase.update({ status: 'Approved', grn_completed: true, invoice_attached: true });
+
+      // Create MRN attachment required for completion
+      await Attachment.create({
+        local_purchase_id: testPurchase.id,
+        file_name: 'mrn.pdf',
+        original_name: 'mrn.pdf',
+        file_path: '/tmp/mrn.pdf',
+        file_type: 'application/pdf',
+        file_size: 1000,
+        attachment_type: 'Manual MRN Photo',
+        uploaded_by: storeKeeperUser.id
+      });
 
       const res = await request(app)
         .post(`/api/local-purchases/${testPurchase.id}/complete`)
@@ -201,7 +214,9 @@ describe('Approval Workflow', () => {
       expect(res.body.data.status).toBe('Completed');
     });
 
-    it('should not complete a pending record (invalid transition)', async () => {
+    it('should not complete a MRN Created record (invalid transition)', async () => {
+      await testPurchase.update({ status: 'MRN Created' });
+
       const res = await request(app)
         .post(`/api/local-purchases/${testPurchase.id}/complete`)
         .set('Authorization', `Bearer ${managerToken}`)
@@ -221,6 +236,114 @@ describe('Approval Workflow', () => {
 
       expect(res.status).toBe(400);
       expect(res.body.message).toContain('Cannot transition');
+    });
+
+    it('should not complete without grn_completed and invoice_attached', async () => {
+      await testPurchase.update({ status: 'Approved', grn_completed: false, invoice_attached: false });
+
+      const res = await request(app)
+        .post(`/api/local-purchases/${testPurchase.id}/complete`)
+        .set('Authorization', `Bearer ${managerToken}`)
+        .send({});
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain('GRN must be completed');
+    });
+  });
+
+  describe('POST /api/local-purchases/:id/advance-status', () => {
+    it('should advance status from MRN Created to MRN Uploaded with MRN attachment', async () => {
+      await testPurchase.update({ status: 'MRN Created' });
+
+      // Create the required MRN attachment
+      await Attachment.create({
+        local_purchase_id: testPurchase.id,
+        file_name: 'mrn.jpg',
+        original_name: 'mrn.jpg',
+        file_path: '/tmp/mrn.jpg',
+        file_type: 'image/jpeg',
+        file_size: 500,
+        attachment_type: 'Manual MRN Photo',
+        uploaded_by: storeKeeperUser.id
+      });
+
+      const res = await request(app)
+        .post(`/api/local-purchases/${testPurchase.id}/advance-status`)
+        .set('Authorization', `Bearer ${storeKeeperToken}`)
+        .send({ status: 'MRN Uploaded' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.status).toBe('MRN Uploaded');
+    });
+
+    it('should not advance to MRN Uploaded without MRN attachment', async () => {
+      await testPurchase.update({ status: 'MRN Created' });
+
+      const res = await request(app)
+        .post(`/api/local-purchases/${testPurchase.id}/advance-status`)
+        .set('Authorization', `Bearer ${storeKeeperToken}`)
+        .send({ status: 'MRN Uploaded' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain('Manual MRN Photo or Manual MRN Scanned Copy attachment is required');
+    });
+
+    it('should advance from MRN Uploaded to Item Purchased', async () => {
+      await testPurchase.update({ status: 'MRN Uploaded' });
+
+      const res = await request(app)
+        .post(`/api/local-purchases/${testPurchase.id}/advance-status`)
+        .set('Authorization', `Bearer ${storeKeeperToken}`)
+        .send({ status: 'Item Purchased' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.status).toBe('Item Purchased');
+    });
+
+    it('should require target status', async () => {
+      const res = await request(app)
+        .post(`/api/local-purchases/${testPurchase.id}/advance-status`)
+        .set('Authorization', `Bearer ${storeKeeperToken}`)
+        .send({});
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toBe('Target status is required');
+    });
+
+    it('should reject invalid transitions', async () => {
+      await testPurchase.update({ status: 'MRN Created' });
+
+      const res = await request(app)
+        .post(`/api/local-purchases/${testPurchase.id}/advance-status`)
+        .set('Authorization', `Bearer ${storeKeeperToken}`)
+        .send({ status: 'Completed' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain('Cannot transition');
+    });
+
+    it('should reject advancement by Viewer', async () => {
+      const res = await request(app)
+        .post(`/api/local-purchases/${testPurchase.id}/advance-status`)
+        .set('Authorization', `Bearer ${viewerToken}`)
+        .send({ status: 'MRN Uploaded' });
+
+      expect(res.status).toBe(403);
+      expect(res.body.success).toBe(false);
+    });
+
+    it('should not advance to GRN Completed without invoice_attached', async () => {
+      await testPurchase.update({ status: 'Invoice Attached', invoice_attached: false });
+
+      const res = await request(app)
+        .post(`/api/local-purchases/${testPurchase.id}/advance-status`)
+        .set('Authorization', `Bearer ${storeKeeperToken}`)
+        .send({ status: 'GRN Completed' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain('invoice must be attached');
     });
   });
 

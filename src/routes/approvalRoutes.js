@@ -2,10 +2,17 @@ const express = require('express');
 const router = express.Router();
 const { authenticate } = require('../middleware/auth');
 const { authorize } = require('../middleware/rbac');
-const { approve, reject, complete, history } = require('../controllers/approvalController');
+const { approve, reject, complete, advanceStatus, history } = require('../controllers/approvalController');
 
 // All routes require authentication
 router.use(authenticate);
+
+// POST /api/local-purchases/:id/advance-status - Advance status (Store Keeper/Manager/Admin)
+router.post(
+  '/:id/advance-status',
+  authorize('Store Keeper', 'Manager', 'Admin'),
+  advanceStatus
+);
 
 // POST /api/local-purchases/:id/approve - Approve (Manager/Admin)
 router.post(

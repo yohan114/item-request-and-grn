@@ -90,6 +90,33 @@ const complete = async (req, res, next) => {
   }
 };
 
+const advanceStatus = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { status: targetStatus, remarks } = req.body;
+
+    if (!targetStatus) {
+      return res.status(400).json({ success: false, message: 'Target status is required' });
+    }
+
+    const result = await changeStatus({
+      purchaseId: id,
+      newStatus: targetStatus,
+      userId: req.user.id,
+      remarks,
+      ipAddress: req.ip
+    });
+
+    if (!result.success) {
+      return res.status(result.status).json({ success: false, message: result.message });
+    }
+
+    res.json({ success: true, message: `Status advanced to ${targetStatus}`, data: result.data });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const history = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -116,5 +143,6 @@ module.exports = {
   approve,
   reject,
   complete,
+  advanceStatus,
   history
 };
