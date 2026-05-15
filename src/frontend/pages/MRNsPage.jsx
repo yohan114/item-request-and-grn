@@ -9,6 +9,7 @@ function MRNsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
+  const [approvalStatus, setApprovalStatus] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const { user } = useAuth();
@@ -16,7 +17,7 @@ function MRNsPage() {
 
   useEffect(() => {
     loadRecords();
-  }, [page, status]);
+  }, [page, status, approvalStatus]);
 
   const loadRecords = async () => {
     try {
@@ -24,6 +25,7 @@ function MRNsPage() {
       const params = { page, limit: 10 };
       if (search) params.search = search;
       if (status) params.status = status;
+      if (approvalStatus) params.approval_status = approvalStatus;
       const res = await mrnAPI.getAll(params);
       const data = res.data.data;
       setRecords(Array.isArray(data) ? data : (data?.records || []));
@@ -56,6 +58,15 @@ function MRNsPage() {
     return getMrnItemsCount(record);
   };
 
+  const getApprovalBadgeClass = (approvalStatus) => {
+    switch (approvalStatus) {
+      case 'Approved': return 'badge-completed';
+      case 'Rejected': return 'badge-draft';
+      case 'Pending': return 'badge-submitted';
+      default: return 'badge-draft';
+    }
+  };
+
   return (
     <div>
       <div className="card">
@@ -84,6 +95,12 @@ function MRNsPage() {
             <option value="Delivered">Delivered</option>
             <option value="Completed">Completed</option>
           </select>
+          <select className="form-control" value={approvalStatus} onChange={(e) => { setApprovalStatus(e.target.value); setPage(1); }}>
+            <option value="">All Approval</option>
+            <option value="Pending">Pending</option>
+            <option value="Approved">Approved</option>
+            <option value="Rejected">Rejected</option>
+          </select>
           <button type="submit" className="btn btn-secondary">Search</button>
         </form>
 
@@ -105,6 +122,7 @@ function MRNsPage() {
                     <th>Request For</th>
                     <th>Items</th>
                     <th>Status</th>
+                    <th>Approval</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
@@ -116,10 +134,11 @@ function MRNsPage() {
                       <td>{record.request_for}</td>
                       <td>{getItemsCount(record)} item(s)</td>
                       <td><span className={`badge badge-${(record.status || 'draft').toLowerCase()}`}>{record.status}</span></td>
+                      <td><span className={`badge ${getApprovalBadgeClass(record.approval_status)}`}>{record.approval_status || 'Pending'}</span></td>
                       <td>
                         <div className="btn-group" onClick={(e) => e.stopPropagation()}>
                           <button className="btn btn-secondary btn-sm" onClick={() => navigate(`/mrns/${record.id}`)}>View</button>
-                          {record.status === 'Draft' && ['Admin', 'Manager', 'Store Keeper'].includes(user?.role) && (
+                          {record.status === 'Draft' && record.approval_status !== 'Approved' && ['Admin', 'Manager', 'Store Keeper'].includes(user?.role) && (
                             <button className="btn btn-secondary btn-sm" onClick={() => navigate(`/mrns/${record.id}/edit`)}>Edit</button>
                           )}
                           {['Admin'].includes(user?.role) && (

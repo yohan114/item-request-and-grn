@@ -62,6 +62,10 @@ AuditLog.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 User.hasMany(MRN, { foreignKey: 'created_by', as: 'mrns' });
 MRN.belongsTo(User, { foreignKey: 'created_by', as: 'creator' });
 
+// MRN approval associations
+User.hasMany(MRN, { foreignKey: 'approved_by', as: 'approvedMrns' });
+MRN.belongsTo(User, { foreignKey: 'approved_by', as: 'approver' });
+
 // GRN associations
 User.hasMany(GRN, { foreignKey: 'created_by', as: 'grns' });
 GRN.belongsTo(User, { foreignKey: 'created_by', as: 'grnCreator' });

@@ -91,6 +91,7 @@ const list = async (req, res, next) => {
       limit = 10,
       mrn_number,
       status,
+      approval_status,
       request_for,
       date_from,
       date_to
@@ -107,6 +108,9 @@ const list = async (req, res, next) => {
     }
     if (status) {
       where.status = status;
+    }
+    if (approval_status) {
+      where.approval_status = approval_status;
     }
     if (request_for) {
       where.request_for = { [Op.like]: `%${request_for}%` };
@@ -162,6 +166,11 @@ const getById = async (req, res, next) => {
           attributes: ['id', 'username', 'full_name']
         },
         {
+          model: User,
+          as: 'approver',
+          attributes: ['id', 'username', 'full_name']
+        },
+        {
           model: Attachment,
           as: 'attachments'
         }
@@ -194,6 +203,14 @@ const update = async (req, res, next) => {
       return res.status(404).json({
         success: false,
         message: 'MRN record not found'
+      });
+    }
+
+    // Cannot edit an approved MRN
+    if (mrn.approval_status === 'Approved') {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot edit an approved MRN'
       });
     }
 
@@ -276,12 +293,119 @@ const remove = async (req, res, next) => {
   }
 };
 
+const approveMRN = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { approval_remarks } = req.body;
+
+    const mrn = await MRN.findByPk(id);
+
+    if (!mrn) {
+      return res.status(404).json({
+        success: false,
+        message: 'MRN record not found'
+      });
+    }
+
+    if (mrn.approval_status !== 'Pending') {
+      return res.status(400).json({
+        success: false,
+        message: `MRN is already ${mrn.approval_status.toLowerCase()}`
+      });
+    }
+
+    const oldValues = mrn.toJSON();
+
+    await mrn.update({
+      approval_status: 'Approved',
+      approved_by: req.user.id,
+      approval_remarks: approval_remarks || null
+    });
+
+    await createAuditLog({
+      user_id: req.user.id,
+      action: 'APPROVE',
+      entity_type: 'MRN',
+      entity_id: mrn.id,
+      old_values: oldValues,
+      new_values: mrn.toJSON(),
+      ip_address: req.ip
+    });
+
+    res.json({
+      success: true,
+      message: 'MRN approved successfully',
+      data: mrn
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const rejectMRN = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { approval_remarks } = req.body;
+
+    if (!approval_remarks || !approval_remarks.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Remarks are required for rejection'
+      });
+    }
+
+    const mrn = await MRN.findByPk(id);
+
+    if (!mrn) {
+      return res.status(404).json({
+        success: false,
+        message: 'MRN record not found'
+      });
+    }
+
+    if (mrn.approval_status !== 'Pending') {
+      return res.status(400).json({
+        success: false,
+        message: `MRN is already ${mrn.approval_status.toLowerCase()}`
+      });
+    }
+
+    const oldValues = mrn.toJSON();
+
+    await mrn.update({
+      approval_status: 'Rejected',
+      approved_by: req.user.id,
+      approval_remarks: approval_remarks.trim()
+    });
+
+    await createAuditLog({
+      user_id: req.user.id,
+      action: 'REJECT',
+      entity_type: 'MRN',
+      entity_id: mrn.id,
+      old_values: oldValues,
+      new_values: mrn.toJSON(),
+      ip_address: req.ip
+    });
+
+    res.json({
+      success: true,
+      message: 'MRN rejected successfully',
+      data: mrn
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   create,
   list,
   getById,
   update,
   remove,
+  approveMRN,
+  rejectMRN,
   createValidation,
   updateValidation
 };

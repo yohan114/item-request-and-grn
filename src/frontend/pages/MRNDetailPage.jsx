@@ -14,6 +14,8 @@ function MRNDetailPage() {
   const [linkedGRNs, setLinkedGRNs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showUpload, setShowUpload] = useState(false);
+  const [approvalRemarks, setApprovalRemarks] = useState('');
+  const [approving, setApproving] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -35,6 +37,38 @@ function MRNDetailPage() {
       console.error('Failed to load MRN:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleApprove = async () => {
+    if (!confirm('Are you sure you want to approve this MRN?')) return;
+    try {
+      setApproving(true);
+      await mrnAPI.approve(id, { approval_remarks: approvalRemarks || undefined });
+      setApprovalRemarks('');
+      loadData();
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to approve MRN');
+    } finally {
+      setApproving(false);
+    }
+  };
+
+  const handleReject = async () => {
+    if (!approvalRemarks.trim()) {
+      alert('Remarks are required for rejection');
+      return;
+    }
+    if (!confirm('Are you sure you want to reject this MRN?')) return;
+    try {
+      setApproving(true);
+      await mrnAPI.reject(id, { approval_remarks: approvalRemarks });
+      setApprovalRemarks('');
+      loadData();
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to reject MRN');
+    } finally {
+      setApproving(false);
     }
   };
 
@@ -83,9 +117,19 @@ function MRNDetailPage() {
   if (loading) return <div className="loading">Loading...</div>;
   if (!record) return <div className="empty-state"><h3>MRN not found</h3></div>;
 
-  const canEdit = record.status === 'Draft' && ['Admin', 'Manager', 'Store Keeper'].includes(user?.role);
+  const canEdit = record.status === 'Draft' && record.approval_status !== 'Approved' && ['Admin', 'Manager', 'Store Keeper'].includes(user?.role);
+  const canApprove = record.approval_status === 'Pending' && ['Engineer', 'Manager', 'Admin'].includes(user?.role);
 
   const parsedItems = parseMrnItems(record.items);
+
+  const getApprovalBadgeClass = (status) => {
+    switch (status) {
+      case 'Approved': return 'badge-completed';
+      case 'Rejected': return 'badge-draft';
+      case 'Pending': return 'badge-submitted';
+      default: return 'badge-draft';
+    }
+  };
 
   return (
     <div>
@@ -95,6 +139,9 @@ function MRNDetailPage() {
             {record.mrn_number}
             <span className={`badge badge-${(record.status || 'draft').toLowerCase()}`} style={{ marginLeft: 12 }}>
               {record.status}
+            </span>
+            <span className={`badge ${getApprovalBadgeClass(record.approval_status)}`} style={{ marginLeft: 8 }}>
+              {record.approval_status || 'Pending'}
             </span>
           </h2>
           <div className="btn-group">
@@ -123,6 +170,14 @@ function MRNDetailPage() {
             <div className="value">{record.status}</div>
           </div>
           <div className="detail-item">
+            <div className="label">Approval Status</div>
+            <div className="value">
+              <span className={`badge ${getApprovalBadgeClass(record.approval_status)}`}>
+                {record.approval_status || 'Pending'}
+              </span>
+            </div>
+          </div>
+          <div className="detail-item">
             <div className="label">Request Person</div>
             <div className="value">
               {record.request_person_name || '-'}
@@ -136,11 +191,56 @@ function MRNDetailPage() {
               {record.approval_person_designation ? ` (${record.approval_person_designation})` : ''}
             </div>
           </div>
+          {record.approver && (
+            <div className="detail-item">
+              <div className="label">Approved/Rejected By</div>
+              <div className="value">{record.approver.full_name || record.approver.username}</div>
+            </div>
+          )}
+          {record.approval_remarks && (
+            <div className="detail-item">
+              <div className="label">Approval Remarks</div>
+              <div className="value">{record.approval_remarks}</div>
+            </div>
+          )}
           <div className="detail-item">
             <div className="label">Created</div>
             <div className="value">{new Date(record.created_at || record.createdAt).toLocaleString()}</div>
           </div>
         </div>
+
+        {/* Approval Actions */}
+        {canApprove && (
+          <div style={{ marginTop: 16, padding: 16, background: '#f8fafc', borderRadius: 8 }}>
+            <h3>Approval Action</h3>
+            <div className="form-group" style={{ marginTop: 8 }}>
+              <label>Remarks</label>
+              <textarea
+                className="form-control"
+                value={approvalRemarks}
+                onChange={(e) => setApprovalRemarks(e.target.value)}
+                placeholder="Enter remarks (required for rejection)"
+                rows={3}
+              />
+            </div>
+            <div className="btn-group" style={{ marginTop: 8 }}>
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={handleApprove}
+                disabled={approving}
+              >
+                {approving ? 'Processing...' : 'Approve'}
+              </button>
+              <button
+                className="btn btn-danger btn-sm"
+                onClick={handleReject}
+                disabled={approving}
+              >
+                {approving ? 'Processing...' : 'Reject'}
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Items Table */}
         {parsedItems.length > 0 && (

@@ -52,6 +52,18 @@ module.exports = (sequelize) => {
       type: DataTypes.ENUM('Draft', 'Submitted', 'Purchased', 'Delivered', 'Completed'),
       defaultValue: 'Draft'
     },
+    approval_status: {
+      type: DataTypes.ENUM('Pending', 'Approved', 'Rejected'),
+      defaultValue: 'Pending'
+    },
+    approved_by: {
+      type: DataTypes.UUID,
+      allowNull: true
+    },
+    approval_remarks: {
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
     created_by: {
       type: DataTypes.UUID,
       allowNull: false

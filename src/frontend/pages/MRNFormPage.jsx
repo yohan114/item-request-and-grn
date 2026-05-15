@@ -32,6 +32,14 @@ function MRNFormPage() {
       setLoading(true);
       const res = await mrnAPI.getById(id);
       const data = res.data.data;
+
+      // If MRN is approved, redirect back
+      if (data.approval_status === 'Approved') {
+        setError('Cannot edit an approved MRN');
+        setTimeout(() => navigate(`/mrns/${id}`), 1500);
+        return;
+      }
+
       setForm({
         request_for: data.request_for || '',
         request_person_name: data.request_person_name || '',

@@ -101,7 +101,9 @@ export const mrnAPI = {
   getById: (id) => api.get(`/mrns/${id}`),
   create: (data) => api.post('/mrns', data),
   update: (id, data) => api.put(`/mrns/${id}`, data),
-  delete: (id) => api.delete(`/mrns/${id}`)
+  delete: (id) => api.delete(`/mrns/${id}`),
+  approve: (id, data) => api.post(`/mrns/${id}/approve`, data),
+  reject: (id, data) => api.post(`/mrns/${id}/reject`, data)
 };
 
 // GRN API

@@ -24,6 +24,23 @@ const seed = async () => {
       console.log('Admin user already exists');
     }
 
+    const engineerExists = await User.findOne({ where: { username: 'engineer' } });
+
+    if (!engineerExists) {
+      const hashedPassword = await hashPassword('engineer123');
+      await User.create({
+        username: 'engineer',
+        email: 'engineer@example.com',
+        password: hashedPassword,
+        full_name: 'Site Engineer',
+        role: 'Engineer',
+        is_active: true
+      });
+      console.log('Default engineer user created');
+    } else {
+      console.log('Engineer user already exists');
+    }
+
     process.exit(0);
   } catch (error) {
     console.error('Seeding failed:', error.message);

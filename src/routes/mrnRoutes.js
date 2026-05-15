@@ -9,6 +9,8 @@ const {
   getById,
   update,
   remove,
+  approveMRN,
+  rejectMRN,
   createValidation,
   updateValidation
 } = require('../controllers/mrnController');
@@ -27,15 +29,29 @@ router.post(
 // GET /api/mrns - List (all authenticated users)
 router.get(
   '/',
-  authorize('Admin', 'Manager', 'Store Keeper', 'Viewer'),
+  authorize('Admin', 'Manager', 'Engineer', 'Store Keeper', 'Viewer'),
   list
 );
 
 // GET /api/mrns/:id - Get by ID (all authenticated users)
 router.get(
   '/:id',
-  authorize('Admin', 'Manager', 'Store Keeper', 'Viewer'),
+  authorize('Admin', 'Manager', 'Engineer', 'Store Keeper', 'Viewer'),
   getById
+);
+
+// POST /api/mrns/:id/approve - Approve MRN (Engineer, Manager, Admin)
+router.post(
+  '/:id/approve',
+  authorize('Engineer', 'Manager', 'Admin'),
+  approveMRN
+);
+
+// POST /api/mrns/:id/reject - Reject MRN (Engineer, Manager, Admin)
+router.post(
+  '/:id/reject',
+  authorize('Engineer', 'Manager', 'Admin'),
+  rejectMRN
 );
 
 // PUT /api/mrns/:id - Update (Store Keeper, Manager, Admin)
