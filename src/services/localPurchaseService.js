@@ -1,0 +1,55 @@
+const { LocalPurchase } = require('../models');
+
+const generateMRN = async () => {
+  const today = new Date();
+  const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
+  const prefix = `MRN-${dateStr}-`;
+
+  const lastRecord = await LocalPurchase.findOne({
+    where: {},
+    order: [['created_at', 'DESC']],
+    attributes: ['mrn_number']
+  });
+
+  let sequence = 1;
+  if (lastRecord && lastRecord.mrn_number) {
+    const lastSeq = parseInt(lastRecord.mrn_number.split('-').pop(), 10);
+    if (!isNaN(lastSeq)) {
+      sequence = lastSeq + 1;
+    }
+  }
+
+  return `${prefix}${String(sequence).padStart(4, '0')}`;
+};
+
+const generateGRN = async () => {
+  const today = new Date();
+  const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
+  const prefix = `GRN-${dateStr}-`;
+
+  const lastRecord = await LocalPurchase.findOne({
+    where: {},
+    order: [['created_at', 'DESC']],
+    attributes: ['grn_number']
+  });
+
+  let sequence = 1;
+  if (lastRecord && lastRecord.grn_number) {
+    const lastSeq = parseInt(lastRecord.grn_number.split('-').pop(), 10);
+    if (!isNaN(lastSeq)) {
+      sequence = lastSeq + 1;
+    }
+  }
+
+  return `${prefix}${String(sequence).padStart(4, '0')}`;
+};
+
+const calculateTotalAmount = (quantity, unit_price) => {
+  return parseFloat(quantity) * parseFloat(unit_price);
+};
+
+module.exports = {
+  generateMRN,
+  generateGRN,
+  calculateTotalAmount
+};
