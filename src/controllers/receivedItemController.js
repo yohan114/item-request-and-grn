@@ -5,6 +5,7 @@ const { Op } = require('sequelize');
 const { ReceivedItem, User, MRN } = require('../models');
 const { createReceivedItemWithRetry } = require('../services/receivedItemService');
 const { createAuditLog } = require('../utils/auditLogger');
+const { allItemsReceived } = require('../utils/pendingItemsHelper');
 
 const uploadsDir = path.join(__dirname, '..', '..', 'uploads');
 
@@ -73,41 +74,18 @@ const create = async (req, res, next) => {
     try {
       const mrnRecord = await MRN.findByPk(mrn_id);
       if (mrnRecord && mrnRecord.status !== 'Completed') {
-        let mrnItems = mrnRecord.items;
-        if (typeof mrnItems === 'string') {
-          try { mrnItems = JSON.parse(mrnItems); } catch (e) { mrnItems = []; }
-        }
-        if (Array.isArray(mrnItems) && mrnItems.length > 0) {
-          const allReceivedItems = await ReceivedItem.findAll({ where: { mrn_id } });
-          let allFullyReceived = true;
-          for (const mrnItem of mrnItems) {
-            let totalReceived = 0;
-            for (const ri of allReceivedItems) {
-              let itemDetails = ri.item_details;
-              if (typeof itemDetails === 'string') {
-                try { itemDetails = JSON.parse(itemDetails); } catch (e) { itemDetails = {}; }
-              }
-              if (itemDetails && itemDetails.item_no === mrnItem.item_no) {
-                totalReceived += parseFloat(ri.received_qty) || 0;
-              }
-            }
-            if (totalReceived < parseFloat(mrnItem.qty)) {
-              allFullyReceived = false;
-              break;
-            }
-          }
-          if (allFullyReceived) {
-            await mrnRecord.update({ status: 'Completed' });
-            mrnAutoClosed = true;
-            await createAuditLog({
-              user_id: req.user.id,
-              action: 'AUTO_CLOSE',
-              entity_type: 'MRN',
-              entity_id: mrnRecord.id,
-              new_values: { status: 'Completed', reason: 'All items received' },
-              ip_address: req.ip
-            });
-          }
+        const allReceivedItems = await ReceivedItem.findAll({ where: { mrn_id } });
+        if (allItemsReceived(mrnRecord.items, allReceivedItems)) {
+          await mrnRecord.update({ status: 'Completed' });
+          mrnAutoClosed = true;
+          await createAuditLog({
+            user_id: req.user.id,
+            action: 'AUTO_CLOSE',
+            entity_type: 'MRN',
+            entity_id: mrnRecord.id,
+            new_values: { status: 'Completed', reason: 'All items received' },
+            ip_address: req.ip
+          });
         }
       }
     } catch (autoCloseErr) {

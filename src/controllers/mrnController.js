@@ -3,6 +3,7 @@ const { Op } = require('sequelize');
 const { MRN, User, Attachment, ReceivedItem } = require('../models');
 const { createMRNWithRetry } = require('../services/mrnService');
 const { createAuditLog } = require('../utils/auditLogger');
+const { computePendingItems, parseItems } = require('../utils/pendingItemsHelper');
 
 const createValidation = [
   body('request_for').trim().notEmpty().withMessage('Request For is required'),
@@ -147,30 +148,9 @@ const list = async (req, res, next) => {
 
     const dataWithPending = rows.map(row => {
       const mrnJson = row.toJSON();
-      let mrnItems = mrnJson.items;
-      if (typeof mrnItems === 'string') {
-        try { mrnItems = JSON.parse(mrnItems); } catch (e) { mrnItems = []; }
-      }
-      if (!Array.isArray(mrnItems)) mrnItems = [];
-
       const mrnReceivedItems = allReceivedItems.filter(ri => ri.mrn_id === row.id);
-      let pendingCount = 0;
-      for (const item of mrnItems) {
-        let totalReceived = 0;
-        for (const ri of mrnReceivedItems) {
-          let itemDetails = ri.item_details;
-          if (typeof itemDetails === 'string') {
-            try { itemDetails = JSON.parse(itemDetails); } catch (e) { itemDetails = {}; }
-          }
-          if (itemDetails && itemDetails.item_no === item.item_no) {
-            totalReceived += parseFloat(ri.received_qty) || 0;
-          }
-        }
-        if (totalReceived < parseFloat(item.qty)) {
-          pendingCount++;
-        }
-      }
-      mrnJson.pending_items_count = pendingCount;
+      const pendingItems = computePendingItems(mrnJson.items, mrnReceivedItems);
+      mrnJson.pending_items_count = pendingItems.length;
       return mrnJson;
     });
 
@@ -342,6 +322,13 @@ const approveMRN = async (req, res, next) => {
       });
     }
 
+    if (mrn.created_by === req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Cannot approve/reject your own record'
+      });
+    }
+
     if (mrn.approval_status !== 'Pending') {
       return res.status(400).json({
         success: false,
@@ -398,6 +385,13 @@ const rejectMRN = async (req, res, next) => {
       });
     }
 
+    if (mrn.created_by === req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Cannot approve/reject your own record'
+      });
+    }
+
     if (mrn.approval_status !== 'Pending') {
       return res.status(400).json({
         success: false,
@@ -446,37 +440,8 @@ const getPendingItems = async (req, res, next) => {
       });
     }
 
-    let mrnItems = mrn.items;
-    if (typeof mrnItems === 'string') {
-      try { mrnItems = JSON.parse(mrnItems); } catch (e) { mrnItems = []; }
-    }
-    if (!Array.isArray(mrnItems)) mrnItems = [];
-
     const receivedItems = await ReceivedItem.findAll({ where: { mrn_id: id } });
-
-    const pendingItems = [];
-    for (const item of mrnItems) {
-      let totalReceived = 0;
-      for (const ri of receivedItems) {
-        let itemDetails = ri.item_details;
-        if (typeof itemDetails === 'string') {
-          try { itemDetails = JSON.parse(itemDetails); } catch (e) { itemDetails = {}; }
-        }
-        if (itemDetails && itemDetails.item_no === item.item_no) {
-          totalReceived += parseFloat(ri.received_qty) || 0;
-        }
-      }
-      const remainingQty = parseFloat(item.qty) - totalReceived;
-      if (remainingQty > 0) {
-        pendingItems.push({
-          item_no: item.item_no,
-          description: item.description,
-          qty: parseFloat(item.qty),
-          total_received: totalReceived,
-          remaining_qty: remainingQty
-        });
-      }
-    }
+    const pendingItems = computePendingItems(mrn.items, receivedItems);
 
     res.json({
       success: true,

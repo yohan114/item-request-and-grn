@@ -1,6 +1,6 @@
 const { body } = require('express-validator');
 const { Op } = require('sequelize');
-const { GRN, User, Attachment, ReceivedItem } = require('../models');
+const { GRN, User, Attachment, ReceivedItem, MRN } = require('../models');
 const { createGRNWithRetry } = require('../services/grnService');
 const { createAuditLog } = require('../utils/auditLogger');
 
@@ -81,6 +81,41 @@ const create = async (req, res, next) => {
     // Handle invoice attachment file
     if (req.file) {
       grnData.invoice_attachment = req.file.filename;
+    }
+
+    // Validate received_item_ids before creating GRN
+    if (parsedReceivedItemIds.length > 0) {
+      const receivedItems = await ReceivedItem.findAll({
+        where: { id: { [Op.in]: parsedReceivedItemIds } }
+      });
+
+      // Check all IDs correspond to existing records
+      if (receivedItems.length !== parsedReceivedItemIds.length) {
+        return res.status(400).json({
+          success: false,
+          message: 'One or more received item IDs are invalid'
+        });
+      }
+
+      // Check all items have grn_status === 'Pending'
+      const nonPending = receivedItems.filter(ri => ri.grn_status !== 'Pending');
+      if (nonPending.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'One or more received items are already linked to a GRN'
+        });
+      }
+
+      // If mrn_id is provided, check all items belong to that MRN
+      if (mrn_id) {
+        const mismatch = receivedItems.filter(ri => ri.mrn_id !== mrn_id);
+        if (mismatch.length > 0) {
+          return res.status(400).json({
+            success: false,
+            message: 'One or more received items do not belong to the specified MRN'
+          });
+        }
+      }
     }
 
     const grn = await createGRNWithRetry(grnData);
@@ -233,6 +268,14 @@ const update = async (req, res, next) => {
       });
     }
 
+    // Cannot edit an approved GRN
+    if (grn.approval_status === 'Approved') {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot edit an approved GRN'
+      });
+    }
+
     // Store Keeper can only edit their own records
     if (req.user.role === 'Store Keeper' && grn.created_by !== req.user.id) {
       return res.status(403).json({
@@ -332,10 +375,17 @@ const approveGRN = async (req, res, next) => {
       });
     }
 
-    if (grn.approval_status === 'Approved') {
+    if (grn.created_by === req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Cannot approve/reject your own record'
+      });
+    }
+
+    if (grn.approval_status !== 'Pending') {
       return res.status(400).json({
         success: false,
-        message: 'GRN is already approved'
+        message: `GRN is already ${grn.approval_status.toLowerCase()}`
       });
     }
 
@@ -387,10 +437,17 @@ const rejectGRN = async (req, res, next) => {
       });
     }
 
-    if (grn.approval_status === 'Rejected') {
+    if (grn.created_by === req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Cannot approve/reject your own record'
+      });
+    }
+
+    if (grn.approval_status !== 'Pending') {
       return res.status(400).json({
         success: false,
-        message: 'GRN is already rejected'
+        message: `GRN is already ${grn.approval_status.toLowerCase()}`
       });
     }
 
@@ -401,6 +458,12 @@ const rejectGRN = async (req, res, next) => {
       approved_by: req.user.id,
       approval_remarks: approval_remarks || null
     });
+
+    // Revert linked received items so they can be re-linked to a new GRN
+    await ReceivedItem.update(
+      { grn_status: 'Pending', grn_id: null },
+      { where: { grn_id: grn.id } }
+    );
 
     await createAuditLog({
       user_id: req.user.id,
