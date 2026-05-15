@@ -11,6 +11,7 @@ const auditLogRoutes = require('./auditLogRoutes');
 const reportRoutes = require('./reportRoutes');
 const mrnRoutes = require('./mrnRoutes');
 const grnRoutes = require('./grnRoutes');
+const receivedItemRoutes = require('./receivedItemRoutes');
 
 router.use('/auth', authRoutes);
 router.use('/users', userRoutes);
@@ -22,6 +23,7 @@ router.use('/audit-logs', auditLogRoutes);
 router.use('/reports', reportRoutes);
 router.use('/mrns', mrnRoutes);
 router.use('/grns', grnRoutes);
+router.use('/received-items', receivedItemRoutes);
 
 // Health check
 router.get('/health', (req, res) => {

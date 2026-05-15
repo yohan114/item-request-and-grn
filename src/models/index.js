@@ -37,6 +37,7 @@ const ApprovalHistory = require('./ApprovalHistory')(sequelize);
 const AuditLog = require('./AuditLog')(sequelize);
 const MRN = require('./MRN')(sequelize);
 const GRN = require('./GRN')(sequelize);
+const ReceivedItem = require('./ReceivedItem')(sequelize);
 
 // Define associations
 User.hasMany(LocalPurchase, { foreignKey: 'created_by', as: 'purchases' });
@@ -76,6 +77,12 @@ Attachment.belongsTo(MRN, { foreignKey: 'mrn_id', as: 'mrnRecord' });
 GRN.hasMany(Attachment, { foreignKey: 'grn_id', as: 'attachments' });
 Attachment.belongsTo(GRN, { foreignKey: 'grn_id', as: 'grnRecord' });
 
+// ReceivedItem associations
+User.hasMany(ReceivedItem, { foreignKey: 'created_by', as: 'receivedItems' });
+ReceivedItem.belongsTo(User, { foreignKey: 'created_by', as: 'creator' });
+MRN.hasMany(ReceivedItem, { foreignKey: 'mrn_id', as: 'receivedItems' });
+ReceivedItem.belongsTo(MRN, { foreignKey: 'mrn_id', as: 'mrn' });
+
 const db = {
   sequelize,
   Sequelize,
@@ -85,7 +92,8 @@ const db = {
   ApprovalHistory,
   AuditLog,
   MRN,
-  GRN
+  GRN,
+  ReceivedItem
 };
 
 module.exports = db;

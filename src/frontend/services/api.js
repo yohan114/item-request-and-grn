@@ -155,4 +155,27 @@ export const grnPdfAPI = {
   getGRN: (id) => api.get(`/grns/${id}/grn-sheet`, { responseType: 'blob' })
 };
 
+// Received Items API
+export const receivedItemsAPI = {
+  getAll: (params) => api.get('/received-items', { params }),
+  getById: (id) => api.get(`/received-items/${id}`),
+  create: (data) => {
+    if (data instanceof FormData) {
+      return api.post('/received-items', data, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+    }
+    return api.post('/received-items', data);
+  },
+  update: (id, data) => {
+    if (data instanceof FormData) {
+      return api.put(`/received-items/${id}`, data, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+    }
+    return api.put(`/received-items/${id}`, data);
+  },
+  delete: (id) => api.delete(`/received-items/${id}`)
+};
+
 export default api;

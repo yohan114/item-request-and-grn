@@ -14,6 +14,9 @@ import MRNDetailPage from './pages/MRNDetailPage';
 import GRNsPage from './pages/GRNsPage';
 import GRNFormPage from './pages/GRNFormPage';
 import GRNDetailPage from './pages/GRNDetailPage';
+import ReceivedItemsPage from './pages/ReceivedItemsPage';
+import ReceivedItemFormPage from './pages/ReceivedItemFormPage';
+import ReceivedItemDetailPage from './pages/ReceivedItemDetailPage';
 import UsersPage from './pages/UsersPage';
 import ReportsPage from './pages/ReportsPage';
 import AuditLogsPage from './pages/AuditLogsPage';
@@ -39,6 +42,10 @@ function App() {
             <Route path="grns/new" element={<GRNFormPage />} />
             <Route path="grns/:id/edit" element={<GRNFormPage />} />
             <Route path="grns/:id" element={<GRNDetailPage />} />
+            <Route path="received-items" element={<ReceivedItemsPage />} />
+            <Route path="received-items/new" element={<ReceivedItemFormPage />} />
+            <Route path="received-items/:id/edit" element={<ReceivedItemFormPage />} />
+            <Route path="received-items/:id" element={<ReceivedItemDetailPage />} />
             <Route path="users" element={<UsersPage />} />
             <Route path="reports" element={<ReportsPage />} />
             <Route path="audit-logs" element={<AuditLogsPage />} />

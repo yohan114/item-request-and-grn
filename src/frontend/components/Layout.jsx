@@ -17,6 +17,10 @@ function Layout() {
     if (path.match(/\/grns\/[^/]+\/edit/)) return 'Edit GRN';
     if (path.match(/\/grns\/[^/]+/)) return 'GRN Details';
     if (path.includes('/grns')) return 'Goods Received Notes';
+    if (path.includes('/received-items/new')) return 'New Received Item';
+    if (path.match(/\/received-items\/[^/]+\/edit/)) return 'Edit Received Item';
+    if (path.match(/\/received-items\/[^/]+/)) return 'Received Item Details';
+    if (path.includes('/received-items')) return 'Received Items';
     if (path.includes('/local-purchases/new')) return 'New Local Purchase';
     if (path.includes('/edit')) return 'Edit Local Purchase';
     if (path.includes('/local-purchases/')) return 'Local Purchase Details';
@@ -31,6 +35,7 @@ function Layout() {
     { path: '/dashboard', label: 'Dashboard', icon: '\u2302', roles: null },
     { path: '/mrns', label: 'MRN', icon: '\u2709', roles: null },
     { path: '/grns', label: 'GRN', icon: '\u2611', roles: null },
+    { path: '/received-items', label: 'Received Items', icon: '\u2610', roles: null },
     { path: '/local-purchases', label: 'Local Purchases', icon: '\u2630', roles: null },
     { path: '/reports', label: 'Reports', icon: '\u2691', roles: ['Admin', 'Manager'] },
     { path: '/audit-logs', label: 'Audit Logs', icon: '\u2699', roles: ['Admin', 'Manager'] },
