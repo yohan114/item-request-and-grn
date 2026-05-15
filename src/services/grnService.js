@@ -1,16 +1,17 @@
-const { GRN, MRN } = require('../models');
+const { GRN, MRN, sequelize } = require('../models');
 
 const MAX_RETRIES = 3;
 
-const generateGRNNumber = async () => {
+const generateGRNNumber = async (transaction) => {
   const today = new Date();
   const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
   const prefix = `GRN-${dateStr}-`;
 
   const lastRecord = await GRN.findOne({
     where: {},
-    order: [['created_at', 'DESC']],
-    attributes: ['grn_number']
+    order: [['grn_number', 'DESC']],
+    attributes: ['grn_number'],
+    ...(transaction ? { transaction } : {})
   });
 
   let sequence = 1;
@@ -27,29 +28,25 @@ const generateGRNNumber = async () => {
 const createGRNWithRetry = async (data) => {
   let lastError;
 
-  // Validate mrn_id if provided
-  if (data.mrn_id) {
-    const mrn = await MRN.findByPk(data.mrn_id);
-    if (!mrn) {
-      const error = new Error('Referenced MRN not found');
-      error.status = 400;
-      throw error;
-    }
-  }
-
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
-      const grn_number = await generateGRNNumber();
+      const result = await sequelize.transaction(async (transaction) => {
+        const grn_number = await generateGRNNumber(transaction);
 
-      const grn = await GRN.create({
-        ...data,
-        grn_number
+        const grn = await GRN.create({
+          ...data,
+          grn_number
+        }, { transaction });
+
+        return grn;
       });
 
-      return grn;
+      return result;
     } catch (error) {
       lastError = error;
       if (error.name === 'SequelizeUniqueConstraintError') {
+        // Add small delay with jitter to avoid identical retries
+        await new Promise(resolve => setTimeout(resolve, 10 * (attempt + 1) + Math.random() * 20));
         continue;
       }
       throw error;

@@ -222,6 +222,14 @@ const update = async (req, res, next) => {
       });
     }
 
+    // Store Keeper can only edit their own records
+    if (req.user.role === 'Store Keeper' && grn.created_by !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'You can only edit your own records'
+      });
+    }
+
     const oldValues = grn.toJSON();
 
     const updateData = {};

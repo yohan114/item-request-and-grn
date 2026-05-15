@@ -216,8 +216,8 @@ const update = async (req, res, next) => {
     }
 
     // Recalculate total_amount if quantity or unit_price changed
-    const newQuantity = updateData.quantity || mrn.quantity;
-    const newUnitPrice = updateData.unit_price || mrn.unit_price;
+    const newQuantity = updateData.quantity !== undefined ? updateData.quantity : mrn.quantity;
+    const newUnitPrice = updateData.unit_price !== undefined ? updateData.unit_price : mrn.unit_price;
     updateData.total_amount = calculateTotalAmount(newQuantity, newUnitPrice);
 
     await mrn.update(updateData);

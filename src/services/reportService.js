@@ -201,14 +201,19 @@ const getMRNSummaryStats = async (filters = {}) => {
     }
   }
 
-  const records = await MRN.findAll({ where });
+  const total = await MRN.count({ where });
 
-  const total = records.length;
+  const statusCounts = await MRN.findAll({
+    attributes: ['status', [sequelize.fn('COUNT', sequelize.col('status')), 'count']],
+    where,
+    group: ['status'],
+    raw: true
+  });
+
   const byStatus = {};
-
-  for (const record of records) {
-    byStatus[record.status] = (byStatus[record.status] || 0) + 1;
-  }
+  statusCounts.forEach(row => {
+    byStatus[row.status] = parseInt(row.count, 10);
+  });
 
   return {
     total,
@@ -235,14 +240,19 @@ const getGRNSummaryStats = async (filters = {}) => {
     }
   }
 
-  const records = await GRN.findAll({ where });
+  const total = await GRN.count({ where });
 
-  const total = records.length;
+  const statusCounts = await GRN.findAll({
+    attributes: ['status', [sequelize.fn('COUNT', sequelize.col('status')), 'count']],
+    where,
+    group: ['status'],
+    raw: true
+  });
+
   const byStatus = {};
-
-  for (const record of records) {
-    byStatus[record.status] = (byStatus[record.status] || 0) + 1;
-  }
+  statusCounts.forEach(row => {
+    byStatus[row.status] = parseInt(row.count, 10);
+  });
 
   return {
     total,
