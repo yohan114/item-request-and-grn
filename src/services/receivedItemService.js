@@ -1,3 +1,4 @@
+const { Op } = require('sequelize');
 const { ReceivedItem, sequelize } = require('../models');
 
 const MAX_RETRIES = 3;
@@ -8,7 +9,7 @@ const generateRINumber = async (transaction) => {
   const prefix = `RI-${dateStr}-`;
 
   const lastRecord = await ReceivedItem.findOne({
-    where: {},
+    where: { ri_number: { [Op.like]: `${prefix}%` } },
     order: [['ri_number', 'DESC']],
     attributes: ['ri_number'],
     ...(transaction ? { transaction } : {})

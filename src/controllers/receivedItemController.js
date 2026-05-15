@@ -1,8 +1,12 @@
+const fs = require('fs');
+const path = require('path');
 const { body } = require('express-validator');
 const { Op } = require('sequelize');
 const { ReceivedItem, User, MRN } = require('../models');
 const { createReceivedItemWithRetry } = require('../services/receivedItemService');
 const { createAuditLog } = require('../utils/auditLogger');
+
+const uploadsDir = path.join(__dirname, '..', '..', 'uploads');
 
 const createValidation = [
   body('mrn_id').trim().notEmpty().withMessage('MRN is required'),
@@ -25,6 +29,19 @@ const create = async (req, res, next) => {
       received_qty,
       notes
     } = req.body;
+
+    // Validate that the referenced MRN exists
+    const mrn = await MRN.findByPk(mrn_id);
+    if (!mrn) {
+      // Remove uploaded file if MRN not found
+      if (req.file) {
+        const filePath = path.join(uploadsDir, req.file.filename);
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      }
+      return res.status(404).json({ success: false, message: 'Referenced MRN not found' });
+    }
 
     const receivedItemData = {
       mrn_id,
@@ -169,6 +186,14 @@ const update = async (req, res, next) => {
       });
     }
 
+    // Only pending records can be edited
+    if (receivedItem.status !== 'Pending') {
+      return res.status(400).json({
+        success: false,
+        message: 'Only pending records can be edited'
+      });
+    }
+
     const oldValues = receivedItem.toJSON();
 
     const updateData = {};
@@ -182,12 +207,19 @@ const update = async (req, res, next) => {
       }
     }
 
-    if (updateData.received_qty) {
+    if (updateData.received_qty !== undefined) {
       updateData.received_qty = parseFloat(updateData.received_qty);
     }
 
     // Handle image file upload
     if (req.file) {
+      // Remove old image file if it exists
+      if (receivedItem.image) {
+        const oldImagePath = path.join(uploadsDir, receivedItem.image);
+        if (fs.existsSync(oldImagePath)) {
+          fs.unlinkSync(oldImagePath);
+        }
+      }
       updateData.image = req.file.filename;
     }
 
@@ -227,6 +259,14 @@ const remove = async (req, res, next) => {
     }
 
     const oldValues = receivedItem.toJSON();
+
+    // Remove image file from disk if it exists
+    if (receivedItem.image) {
+      const imagePath = path.join(uploadsDir, receivedItem.image);
+      if (fs.existsSync(imagePath)) {
+        fs.unlinkSync(imagePath);
+      }
+    }
 
     await receivedItem.destroy();
 
