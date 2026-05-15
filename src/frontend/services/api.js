@@ -127,7 +127,9 @@ export const grnAPI = {
     }
     return api.put(`/grns/${id}`, data);
   },
-  delete: (id) => api.delete(`/grns/${id}`)
+  delete: (id) => api.delete(`/grns/${id}`),
+  approve: (id, data) => api.post(`/grns/${id}/approve`, data),
+  reject: (id, data) => api.post(`/grns/${id}/reject`, data)
 };
 
 // MRN Attachments API
@@ -178,7 +180,8 @@ export const receivedItemsAPI = {
     }
     return api.put(`/received-items/${id}`, data);
   },
-  delete: (id) => api.delete(`/received-items/${id}`)
+  delete: (id) => api.delete(`/received-items/${id}`),
+  getByMrn: (mrnId, params) => api.get('/received-items', { params: { mrn_id: mrnId, ...params } })
 };
 
 export default api;

@@ -89,6 +89,22 @@ function ReceivedItemDetailPage() {
             <div className="label">Created By</div>
             <div className="value">{record.creator?.full_name || record.creator?.username || '-'}</div>
           </div>
+          <div className="detail-item">
+            <div className="label">GRN Status</div>
+            <div className="value">
+              <span className={`badge badge-${record.grn_status === 'GRN Approved' ? 'approved' : record.grn_status === 'GRN Created' ? 'inspection' : 'pending'}`}>
+                {record.grn_status || 'Pending'}
+              </span>
+            </div>
+          </div>
+          {record.grn_id && (
+            <div className="detail-item">
+              <div className="label">Linked GRN</div>
+              <div className="value">
+                <Link to={`/grns/${record.grn_id}`}>View GRN</Link>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

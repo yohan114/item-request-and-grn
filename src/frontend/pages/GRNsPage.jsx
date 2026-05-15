@@ -8,6 +8,7 @@ function GRNsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
+  const [approvalStatus, setApprovalStatus] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const { user } = useAuth();
@@ -15,7 +16,7 @@ function GRNsPage() {
 
   useEffect(() => {
     loadRecords();
-  }, [page, status]);
+  }, [page, status, approvalStatus]);
 
   const loadRecords = async () => {
     try {
@@ -23,6 +24,7 @@ function GRNsPage() {
       const params = { page, limit: 10 };
       if (search) params.search = search;
       if (status) params.status = status;
+      if (approvalStatus) params.approval_status = approvalStatus;
       const res = await grnAPI.getAll(params);
       const data = res.data.data;
       setRecords(Array.isArray(data) ? data : (data?.records || []));
@@ -78,6 +80,12 @@ function GRNsPage() {
             <option value="Completed">Completed</option>
             <option value="Rejected">Rejected</option>
           </select>
+          <select className="form-control" value={approvalStatus} onChange={(e) => { setApprovalStatus(e.target.value); setPage(1); }}>
+            <option value="">All Approval Status</option>
+            <option value="Pending">Pending Approval</option>
+            <option value="Approved">Approved</option>
+            <option value="Rejected">Rejected</option>
+          </select>
           <button type="submit" className="btn btn-secondary">Search</button>
         </form>
 
@@ -98,6 +106,7 @@ function GRNsPage() {
                     <th>Supplier</th>
                     <th>Project Name</th>
                     <th>Status</th>
+                    <th>Approval Status</th>
                     <th>Date</th>
                     <th>Actions</th>
                   </tr>
@@ -109,6 +118,11 @@ function GRNsPage() {
                       <td>{record.supplier_name}</td>
                       <td>{record.project_name || '-'}</td>
                       <td><span className={`badge badge-${(record.status || 'pending').toLowerCase()}`}>{record.status}</span></td>
+                      <td>
+                        <span className={`badge badge-${record.approval_status === 'Approved' ? 'approved' : record.approval_status === 'Rejected' ? 'rejected' : 'pending'}`}>
+                          {record.approval_status || 'Pending'}
+                        </span>
+                      </td>
                       <td>{record.created_at ? new Date(record.created_at || record.createdAt).toLocaleDateString() : '-'}</td>
                       <td>
                         <div className="btn-group" onClick={(e) => e.stopPropagation()}>

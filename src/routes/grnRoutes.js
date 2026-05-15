@@ -10,6 +10,8 @@ const {
   getById,
   update,
   remove,
+  approveGRN,
+  rejectGRN,
   createValidation,
   updateValidation
 } = require('../controllers/grnController');
@@ -45,14 +47,14 @@ router.post(
 // GET /api/grns - List (all authenticated users)
 router.get(
   '/',
-  authorize('Admin', 'Manager', 'Store Keeper', 'Viewer'),
+  authorize('Admin', 'Manager', 'Store Keeper', 'Engineer', 'Viewer'),
   list
 );
 
 // GET /api/grns/:id - Get by ID (all authenticated users)
 router.get(
   '/:id',
-  authorize('Admin', 'Manager', 'Store Keeper', 'Viewer'),
+  authorize('Admin', 'Manager', 'Store Keeper', 'Engineer', 'Viewer'),
   getById
 );
 
@@ -64,6 +66,20 @@ router.put(
   parseItemsField,
   validate(updateValidation),
   update
+);
+
+// POST /api/grns/:id/approve - Approve GRN (Engineer, Manager, Admin)
+router.post(
+  '/:id/approve',
+  authorize('Engineer', 'Manager', 'Admin'),
+  approveGRN
+);
+
+// POST /api/grns/:id/reject - Reject GRN (Engineer, Manager, Admin)
+router.post(
+  '/:id/reject',
+  authorize('Engineer', 'Manager', 'Admin'),
+  rejectGRN
 );
 
 // DELETE /api/grns/:id - Delete (Admin only)

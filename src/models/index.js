@@ -87,6 +87,14 @@ ReceivedItem.belongsTo(User, { foreignKey: 'created_by', as: 'creator' });
 MRN.hasMany(ReceivedItem, { foreignKey: 'mrn_id', as: 'receivedItems' });
 ReceivedItem.belongsTo(MRN, { foreignKey: 'mrn_id', as: 'mrn' });
 
+// ReceivedItem-GRN associations
+ReceivedItem.belongsTo(GRN, { foreignKey: 'grn_id', as: 'grn' });
+GRN.hasMany(ReceivedItem, { foreignKey: 'grn_id', as: 'receivedItems' });
+
+// GRN approval associations
+User.hasMany(GRN, { foreignKey: 'approved_by', as: 'approvedGrns' });
+GRN.belongsTo(User, { foreignKey: 'approved_by', as: 'approver' });
+
 const db = {
   sequelize,
   Sequelize,

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { grnAPI, grnAttachmentsAPI, grnPdfAPI, attachmentsAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { parseMrnItems } from '../services/utils';
@@ -13,6 +13,8 @@ function GRNDetailPage() {
   const [attachments, setAttachments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showUpload, setShowUpload] = useState(false);
+  const [approvalRemarks, setApprovalRemarks] = useState('');
+  const [approving, setApproving] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -31,6 +33,38 @@ function GRNDetailPage() {
       console.error('Failed to load GRN:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleApprove = async () => {
+    if (!confirm('Are you sure you want to approve this GRN?')) return;
+    try {
+      setApproving(true);
+      await grnAPI.approve(id, { approval_remarks: approvalRemarks });
+      setApprovalRemarks('');
+      loadData();
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to approve GRN');
+    } finally {
+      setApproving(false);
+    }
+  };
+
+  const handleReject = async () => {
+    if (!approvalRemarks.trim()) {
+      alert('Please provide remarks for rejection');
+      return;
+    }
+    if (!confirm('Are you sure you want to reject this GRN?')) return;
+    try {
+      setApproving(true);
+      await grnAPI.reject(id, { approval_remarks: approvalRemarks });
+      setApprovalRemarks('');
+      loadData();
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to reject GRN');
+    } finally {
+      setApproving(false);
     }
   };
 
@@ -80,7 +114,16 @@ function GRNDetailPage() {
   if (!record) return <div className="empty-state"><h3>GRN not found</h3></div>;
 
   const canEdit = record.status === 'Pending' && ['Admin', 'Manager', 'Store Keeper'].includes(user?.role);
+  const canApprove = record.approval_status === 'Pending' && ['Engineer', 'Manager', 'Admin'].includes(user?.role);
   const items = parseMrnItems(record.items);
+
+  const getReceivedItemDetails = (ri) => {
+    let details = ri.item_details;
+    if (typeof details === 'string') {
+      try { details = JSON.parse(details); } catch (e) { details = {}; }
+    }
+    return details || {};
+  };
 
   return (
     <div>
@@ -90,6 +133,9 @@ function GRNDetailPage() {
             {record.grn_number}
             <span className={`badge badge-${(record.status || 'pending').toLowerCase()}`} style={{ marginLeft: 12 }}>
               {record.status}
+            </span>
+            <span className={`badge badge-${record.approval_status === 'Approved' ? 'approved' : record.approval_status === 'Rejected' ? 'rejected' : 'pending'}`} style={{ marginLeft: 8 }}>
+              {record.approval_status || 'Pending'}
             </span>
           </h2>
           <div className="btn-group">
@@ -118,11 +164,62 @@ function GRNDetailPage() {
             <div className="value">{record.status}</div>
           </div>
           <div className="detail-item">
+            <div className="label">Approval Status</div>
+            <div className="value">{record.approval_status || 'Pending'}</div>
+          </div>
+          <div className="detail-item">
             <div className="label">Date</div>
             <div className="value">{new Date(record.created_at || record.createdAt).toLocaleDateString()}</div>
           </div>
+          {record.approver && (
+            <div className="detail-item">
+              <div className="label">{record.approval_status === 'Approved' ? 'Approved By' : 'Rejected By'}</div>
+              <div className="value">{record.approver.full_name || record.approver.username}</div>
+            </div>
+          )}
+          {record.approval_remarks && (
+            <div className="detail-item">
+              <div className="label">Approval Remarks</div>
+              <div className="value">{record.approval_remarks}</div>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Approval Section */}
+      {canApprove && (
+        <div className="card">
+          <div className="card-header">
+            <h2>GRN Approval</h2>
+          </div>
+          <div className="form-group">
+            <label>Remarks</label>
+            <textarea
+              className="form-control"
+              rows="3"
+              value={approvalRemarks}
+              onChange={(e) => setApprovalRemarks(e.target.value)}
+              placeholder="Enter approval/rejection remarks..."
+            />
+          </div>
+          <div className="btn-group" style={{ marginTop: 12 }}>
+            <button
+              className="btn btn-primary"
+              onClick={handleApprove}
+              disabled={approving}
+            >
+              {approving ? 'Processing...' : 'Approve GRN'}
+            </button>
+            <button
+              className="btn btn-danger"
+              onClick={handleReject}
+              disabled={approving}
+            >
+              {approving ? 'Processing...' : 'Reject GRN'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Items Table */}
       <div className="card">
@@ -156,6 +253,48 @@ function GRNDetailPage() {
           </div>
         )}
       </div>
+
+      {/* Linked Received Items */}
+      {record.receivedItems && record.receivedItems.length > 0 && (
+        <div className="card">
+          <div className="card-header">
+            <h2>Linked Received Items</h2>
+          </div>
+          <div className="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>RI Number</th>
+                  <th>Item No</th>
+                  <th>Description</th>
+                  <th>Received Qty</th>
+                  <th>GRN Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {record.receivedItems.map(ri => {
+                  const details = getReceivedItemDetails(ri);
+                  return (
+                    <tr key={ri.id}>
+                      <td>
+                        <Link to={`/received-items/${ri.id}`}>{ri.ri_number}</Link>
+                      </td>
+                      <td>{details.item_no || '-'}</td>
+                      <td>{details.description || '-'}</td>
+                      <td>{ri.received_qty}</td>
+                      <td>
+                        <span className={`badge badge-${ri.grn_status === 'GRN Approved' ? 'approved' : ri.grn_status === 'GRN Created' ? 'pending' : 'pending'}`}>
+                          {ri.grn_status || 'Pending'}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Signature Info */}
       {(record.request_person_name || record.approval_person_name) && (

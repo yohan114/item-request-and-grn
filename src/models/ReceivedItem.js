@@ -52,6 +52,14 @@ module.exports = (sequelize) => {
       type: DataTypes.ENUM('Pending', 'Verified', 'Rejected'),
       defaultValue: 'Pending'
     },
+    grn_status: {
+      type: DataTypes.ENUM('Pending', 'GRN Created', 'GRN Approved'),
+      defaultValue: 'Pending'
+    },
+    grn_id: {
+      type: DataTypes.UUID,
+      allowNull: true
+    },
     created_by: {
       type: DataTypes.UUID,
       allowNull: false

@@ -64,6 +64,34 @@ module.exports = (sequelize) => {
       type: DataTypes.ENUM('Pending', 'Inspection', 'Completed', 'Rejected'),
       defaultValue: 'Pending'
     },
+    approval_status: {
+      type: DataTypes.ENUM('Pending', 'Approved', 'Rejected'),
+      defaultValue: 'Pending'
+    },
+    approved_by: {
+      type: DataTypes.UUID,
+      allowNull: true
+    },
+    approval_remarks: {
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
+    received_item_ids: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      get() {
+        const rawValue = this.getDataValue('received_item_ids');
+        if (!rawValue) return [];
+        try {
+          return JSON.parse(rawValue);
+        } catch (e) {
+          return [];
+        }
+      },
+      set(value) {
+        this.setDataValue('received_item_ids', typeof value === 'string' ? value : JSON.stringify(value));
+      }
+    },
     created_by: {
       type: DataTypes.UUID,
       allowNull: false

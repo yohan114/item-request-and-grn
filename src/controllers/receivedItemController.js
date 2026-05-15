@@ -137,7 +137,9 @@ const list = async (req, res, next) => {
       page = 1,
       limit = 10,
       mrn_number,
-      status
+      status,
+      mrn_id,
+      grn_status
     } = req.query;
 
     const pageNum = parseInt(page, 10);
@@ -151,6 +153,12 @@ const list = async (req, res, next) => {
     }
     if (status) {
       where.status = status;
+    }
+    if (mrn_id) {
+      where.mrn_id = mrn_id;
+    }
+    if (grn_status) {
+      where.grn_status = grn_status;
     }
 
     const { count, rows } = await ReceivedItem.findAndCountAll({

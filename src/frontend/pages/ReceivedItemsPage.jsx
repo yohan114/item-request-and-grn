@@ -112,6 +112,7 @@ function ReceivedItemsPage() {
                     <th>Item Description</th>
                     <th>Received Qty</th>
                     <th>Status</th>
+                    <th>GRN Status</th>
                     <th>Date</th>
                     <th>Actions</th>
                   </tr>
@@ -124,6 +125,11 @@ function ReceivedItemsPage() {
                       <td>{getItemDescription(record)}</td>
                       <td>{record.received_qty}</td>
                       <td><span className={`badge badge-${(record.status || 'pending').toLowerCase()}`}>{record.status}</span></td>
+                      <td>
+                        <span className={`badge badge-${record.grn_status === 'GRN Approved' ? 'approved' : record.grn_status === 'GRN Created' ? 'inspection' : 'pending'}`}>
+                          {record.grn_status || 'Pending'}
+                        </span>
+                      </td>
                       <td>{record.created_at ? new Date(record.created_at || record.createdAt).toLocaleDateString() : '-'}</td>
                       <td>
                         <div className="btn-group" onClick={(e) => e.stopPropagation()}>

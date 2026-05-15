@@ -1,6 +1,6 @@
 const { body } = require('express-validator');
 const { Op } = require('sequelize');
-const { GRN, User, Attachment } = require('../models');
+const { GRN, User, Attachment, ReceivedItem } = require('../models');
 const { createGRNWithRetry } = require('../services/grnService');
 const { createAuditLog } = require('../utils/auditLogger');
 
@@ -41,7 +41,9 @@ const create = async (req, res, next) => {
       request_person_name,
       request_person_designation,
       approval_person_name,
-      approval_person_designation
+      approval_person_designation,
+      received_item_ids,
+      mrn_id
     } = req.body;
 
     const grnData = {
@@ -55,12 +57,41 @@ const create = async (req, res, next) => {
       created_by: req.user.id
     };
 
+    if (mrn_id) {
+      grnData.mrn_id = mrn_id;
+    }
+
+    // Parse received_item_ids if provided as JSON string
+    let parsedReceivedItemIds = [];
+    if (received_item_ids) {
+      if (typeof received_item_ids === 'string') {
+        try {
+          parsedReceivedItemIds = JSON.parse(received_item_ids);
+        } catch (e) {
+          parsedReceivedItemIds = [];
+        }
+      } else if (Array.isArray(received_item_ids)) {
+        parsedReceivedItemIds = received_item_ids;
+      }
+      if (parsedReceivedItemIds.length > 0) {
+        grnData.received_item_ids = parsedReceivedItemIds;
+      }
+    }
+
     // Handle invoice attachment file
     if (req.file) {
       grnData.invoice_attachment = req.file.filename;
     }
 
     const grn = await createGRNWithRetry(grnData);
+
+    // If received_item_ids provided, update those ReceivedItem records
+    if (parsedReceivedItemIds.length > 0) {
+      await ReceivedItem.update(
+        { grn_id: grn.id, grn_status: 'GRN Created' },
+        { where: { id: { [Op.in]: parsedReceivedItemIds } } }
+      );
+    }
 
     await createAuditLog({
       user_id: req.user.id,
@@ -94,7 +125,8 @@ const list = async (req, res, next) => {
       limit = 10,
       grn_number,
       supplier_name,
-      status
+      status,
+      approval_status
     } = req.query;
 
     const pageNum = parseInt(page, 10);
@@ -111,6 +143,9 @@ const list = async (req, res, next) => {
     }
     if (status) {
       where.status = status;
+    }
+    if (approval_status) {
+      where.approval_status = approval_status;
     }
 
     const { count, rows } = await GRN.findAndCountAll({
@@ -154,8 +189,17 @@ const getById = async (req, res, next) => {
           attributes: ['id', 'username', 'full_name']
         },
         {
+          model: User,
+          as: 'approver',
+          attributes: ['id', 'username', 'full_name']
+        },
+        {
           model: Attachment,
           as: 'attachments'
+        },
+        {
+          model: ReceivedItem,
+          as: 'receivedItems'
         }
       ]
     });
@@ -274,12 +318,118 @@ const remove = async (req, res, next) => {
   }
 };
 
+const approveGRN = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { approval_remarks } = req.body;
+
+    const grn = await GRN.findByPk(id);
+
+    if (!grn) {
+      return res.status(404).json({
+        success: false,
+        message: 'GRN record not found'
+      });
+    }
+
+    if (grn.approval_status === 'Approved') {
+      return res.status(400).json({
+        success: false,
+        message: 'GRN is already approved'
+      });
+    }
+
+    const oldValues = grn.toJSON();
+
+    await grn.update({
+      approval_status: 'Approved',
+      approved_by: req.user.id,
+      approval_remarks: approval_remarks || null
+    });
+
+    // Update all linked received items to 'GRN Approved'
+    await ReceivedItem.update(
+      { grn_status: 'GRN Approved' },
+      { where: { grn_id: grn.id } }
+    );
+
+    await createAuditLog({
+      user_id: req.user.id,
+      action: 'APPROVE',
+      entity_type: 'GRN',
+      entity_id: grn.id,
+      old_values: oldValues,
+      new_values: grn.toJSON(),
+      ip_address: req.ip
+    });
+
+    res.json({
+      success: true,
+      message: 'GRN approved successfully',
+      data: grn
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const rejectGRN = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { approval_remarks } = req.body;
+
+    const grn = await GRN.findByPk(id);
+
+    if (!grn) {
+      return res.status(404).json({
+        success: false,
+        message: 'GRN record not found'
+      });
+    }
+
+    if (grn.approval_status === 'Rejected') {
+      return res.status(400).json({
+        success: false,
+        message: 'GRN is already rejected'
+      });
+    }
+
+    const oldValues = grn.toJSON();
+
+    await grn.update({
+      approval_status: 'Rejected',
+      approved_by: req.user.id,
+      approval_remarks: approval_remarks || null
+    });
+
+    await createAuditLog({
+      user_id: req.user.id,
+      action: 'REJECT',
+      entity_type: 'GRN',
+      entity_id: grn.id,
+      old_values: oldValues,
+      new_values: grn.toJSON(),
+      ip_address: req.ip
+    });
+
+    res.json({
+      success: true,
+      message: 'GRN rejected successfully',
+      data: grn
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   create,
   list,
   getById,
   update,
   remove,
+  approveGRN,
+  rejectGRN,
   createValidation,
   updateValidation
 };
