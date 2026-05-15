@@ -121,6 +121,7 @@ function MRNsPage() {
                     <th>Date</th>
                     <th>Request For</th>
                     <th>Items</th>
+                    <th>Pending</th>
                     <th>Status</th>
                     <th>Approval</th>
                     <th>Actions</th>
@@ -133,6 +134,15 @@ function MRNsPage() {
                       <td>{record.created_at ? new Date(record.created_at).toLocaleDateString() : '-'}</td>
                       <td>{record.request_for}</td>
                       <td>{getItemsCount(record)} item(s)</td>
+                      <td>
+                        {record.pending_items_count === 0 ? (
+                          <span style={{ color: '#16a34a', fontWeight: 600 }}>All received</span>
+                        ) : (
+                          <span className="badge badge-submitted" style={{ background: '#f59e0b', color: '#fff' }}>
+                            {record.pending_items_count} pending
+                          </span>
+                        )}
+                      </td>
                       <td><span className={`badge badge-${(record.status || 'draft').toLowerCase()}`}>{record.status}</span></td>
                       <td><span className={`badge ${getApprovalBadgeClass(record.approval_status)}`}>{record.approval_status || 'Pending'}</span></td>
                       <td>

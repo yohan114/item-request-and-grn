@@ -146,7 +146,10 @@ function ReceivedItemFormPage() {
       if (isEdit) {
         await receivedItemsAPI.update(id, formData);
       } else {
-        await receivedItemsAPI.create(formData);
+        const createRes = await receivedItemsAPI.create(formData);
+        if (createRes.data.mrn_auto_closed) {
+          alert('MRN has been auto-closed as all items are now received.');
+        }
       }
       navigate('/received-items');
     } catch (err) {

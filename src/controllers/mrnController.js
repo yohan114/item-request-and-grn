@@ -1,6 +1,6 @@
 const { body } = require('express-validator');
 const { Op } = require('sequelize');
-const { MRN, User, Attachment } = require('../models');
+const { MRN, User, Attachment, ReceivedItem } = require('../models');
 const { createMRNWithRetry } = require('../services/mrnService');
 const { createAuditLog } = require('../utils/auditLogger');
 
@@ -139,9 +139,44 @@ const list = async (req, res, next) => {
       offset
     });
 
+    // Calculate pending_items_count for each MRN
+    const mrnIds = rows.map(r => r.id);
+    const allReceivedItems = mrnIds.length > 0
+      ? await ReceivedItem.findAll({ where: { mrn_id: { [Op.in]: mrnIds } } })
+      : [];
+
+    const dataWithPending = rows.map(row => {
+      const mrnJson = row.toJSON();
+      let mrnItems = mrnJson.items;
+      if (typeof mrnItems === 'string') {
+        try { mrnItems = JSON.parse(mrnItems); } catch (e) { mrnItems = []; }
+      }
+      if (!Array.isArray(mrnItems)) mrnItems = [];
+
+      const mrnReceivedItems = allReceivedItems.filter(ri => ri.mrn_id === row.id);
+      let pendingCount = 0;
+      for (const item of mrnItems) {
+        let totalReceived = 0;
+        for (const ri of mrnReceivedItems) {
+          let itemDetails = ri.item_details;
+          if (typeof itemDetails === 'string') {
+            try { itemDetails = JSON.parse(itemDetails); } catch (e) { itemDetails = {}; }
+          }
+          if (itemDetails && itemDetails.item_no === item.item_no) {
+            totalReceived += parseFloat(ri.received_qty) || 0;
+          }
+        }
+        if (totalReceived < parseFloat(item.qty)) {
+          pendingCount++;
+        }
+      }
+      mrnJson.pending_items_count = pendingCount;
+      return mrnJson;
+    });
+
     res.json({
       success: true,
-      data: rows,
+      data: dataWithPending,
       pagination: {
         total: count,
         page: pageNum,
@@ -398,6 +433,60 @@ const rejectMRN = async (req, res, next) => {
   }
 };
 
+const getPendingItems = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const mrn = await MRN.findByPk(id);
+
+    if (!mrn) {
+      return res.status(404).json({
+        success: false,
+        message: 'MRN record not found'
+      });
+    }
+
+    let mrnItems = mrn.items;
+    if (typeof mrnItems === 'string') {
+      try { mrnItems = JSON.parse(mrnItems); } catch (e) { mrnItems = []; }
+    }
+    if (!Array.isArray(mrnItems)) mrnItems = [];
+
+    const receivedItems = await ReceivedItem.findAll({ where: { mrn_id: id } });
+
+    const pendingItems = [];
+    for (const item of mrnItems) {
+      let totalReceived = 0;
+      for (const ri of receivedItems) {
+        let itemDetails = ri.item_details;
+        if (typeof itemDetails === 'string') {
+          try { itemDetails = JSON.parse(itemDetails); } catch (e) { itemDetails = {}; }
+        }
+        if (itemDetails && itemDetails.item_no === item.item_no) {
+          totalReceived += parseFloat(ri.received_qty) || 0;
+        }
+      }
+      const remainingQty = parseFloat(item.qty) - totalReceived;
+      if (remainingQty > 0) {
+        pendingItems.push({
+          item_no: item.item_no,
+          description: item.description,
+          qty: parseFloat(item.qty),
+          total_received: totalReceived,
+          remaining_qty: remainingQty
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      data: pendingItems
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   create,
   list,
@@ -406,6 +495,7 @@ module.exports = {
   remove,
   approveMRN,
   rejectMRN,
+  getPendingItems,
   createValidation,
   updateValidation
 };

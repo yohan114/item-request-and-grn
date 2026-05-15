@@ -103,7 +103,8 @@ export const mrnAPI = {
   update: (id, data) => api.put(`/mrns/${id}`, data),
   delete: (id) => api.delete(`/mrns/${id}`),
   approve: (id, data) => api.post(`/mrns/${id}/approve`, data),
-  reject: (id, data) => api.post(`/mrns/${id}/reject`, data)
+  reject: (id, data) => api.post(`/mrns/${id}/reject`, data),
+  getPendingItems: (id) => api.get(`/mrns/${id}/pending-items`)
 };
 
 // GRN API

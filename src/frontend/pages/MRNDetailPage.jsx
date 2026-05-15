@@ -12,6 +12,7 @@ function MRNDetailPage() {
   const [record, setRecord] = useState(null);
   const [attachments, setAttachments] = useState([]);
   const [linkedGRNs, setLinkedGRNs] = useState([]);
+  const [pendingItems, setPendingItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showUpload, setShowUpload] = useState(false);
   const [approvalRemarks, setApprovalRemarks] = useState('');
@@ -24,15 +25,17 @@ function MRNDetailPage() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [recordRes, attachRes, grnRes] = await Promise.all([
+      const [recordRes, attachRes, grnRes, pendingRes] = await Promise.all([
         mrnAPI.getById(id),
         mrnAttachmentsAPI.getByMRN(id).catch(() => ({ data: { data: [] } })),
-        grnAPI.getAll({ mrn_id: id }).catch(() => ({ data: { data: [] } }))
+        grnAPI.getAll({ mrn_id: id }).catch(() => ({ data: { data: [] } })),
+        mrnAPI.getPendingItems(id).catch(() => ({ data: { data: [] } }))
       ]);
       setRecord(recordRes.data.data);
       setAttachments(attachRes.data.data || []);
       const grnData = grnRes.data.data;
       setLinkedGRNs(Array.isArray(grnData) ? grnData : (grnData?.records || []));
+      setPendingItems(pendingRes.data.data || []);
     } catch (err) {
       console.error('Failed to load MRN:', err);
     } finally {
@@ -266,6 +269,50 @@ function MRNDetailPage() {
                 </tbody>
               </table>
             </div>
+          </div>
+        )}
+      </div>
+
+      {/* Pending Items */}
+      <div className="card">
+        <div className="card-header">
+          <h2>
+            Pending Items
+            {record.status === 'Completed' && (
+              <span className="badge badge-completed" style={{ marginLeft: 12 }}>All Items Received</span>
+            )}
+          </h2>
+        </div>
+        {pendingItems.length === 0 ? (
+          <p style={{ color: 'var(--gray-500)', fontSize: 14 }}>
+            {record.status === 'Completed' ? 'All items have been received.' : 'No pending items.'}
+          </p>
+        ) : (
+          <div className="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Item No</th>
+                  <th>Description</th>
+                  <th>Required Qty</th>
+                  <th>Received Qty</th>
+                  <th>Remaining Qty</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pendingItems.map((item, index) => (
+                  <tr key={index}>
+                    <td>{item.item_no}</td>
+                    <td>{item.description}</td>
+                    <td>{item.qty}</td>
+                    <td>{item.total_received}</td>
+                    <td style={{ color: item.remaining_qty > 0 ? '#d97706' : undefined, fontWeight: item.remaining_qty > 0 ? 600 : undefined }}>
+                      {item.remaining_qty}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>

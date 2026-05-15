@@ -68,10 +68,57 @@ const create = async (req, res, next) => {
       ip_address: req.ip
     });
 
+    // Check if all MRN items have been fully received (auto-close)
+    let mrnAutoClosed = false;
+    try {
+      const mrnRecord = await MRN.findByPk(mrn_id);
+      if (mrnRecord && mrnRecord.status !== 'Completed') {
+        let mrnItems = mrnRecord.items;
+        if (typeof mrnItems === 'string') {
+          try { mrnItems = JSON.parse(mrnItems); } catch (e) { mrnItems = []; }
+        }
+        if (Array.isArray(mrnItems) && mrnItems.length > 0) {
+          const allReceivedItems = await ReceivedItem.findAll({ where: { mrn_id } });
+          let allFullyReceived = true;
+          for (const mrnItem of mrnItems) {
+            let totalReceived = 0;
+            for (const ri of allReceivedItems) {
+              let itemDetails = ri.item_details;
+              if (typeof itemDetails === 'string') {
+                try { itemDetails = JSON.parse(itemDetails); } catch (e) { itemDetails = {}; }
+              }
+              if (itemDetails && itemDetails.item_no === mrnItem.item_no) {
+                totalReceived += parseFloat(ri.received_qty) || 0;
+              }
+            }
+            if (totalReceived < parseFloat(mrnItem.qty)) {
+              allFullyReceived = false;
+              break;
+            }
+          }
+          if (allFullyReceived) {
+            await mrnRecord.update({ status: 'Completed' });
+            mrnAutoClosed = true;
+            await createAuditLog({
+              user_id: req.user.id,
+              action: 'AUTO_CLOSE',
+              entity_type: 'MRN',
+              entity_id: mrnRecord.id,
+              new_values: { status: 'Completed', reason: 'All items received' },
+              ip_address: req.ip
+            });
+          }
+        }
+      }
+    } catch (autoCloseErr) {
+      console.error('Auto-close check failed:', autoCloseErr);
+    }
+
     res.status(201).json({
       success: true,
       message: 'Received item record created successfully',
-      data: receivedItem
+      data: receivedItem,
+      mrn_auto_closed: mrnAutoClosed
     });
   } catch (error) {
     if (error.status === 400) {

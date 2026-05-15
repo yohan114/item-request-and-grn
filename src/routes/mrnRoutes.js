@@ -11,6 +11,7 @@ const {
   remove,
   approveMRN,
   rejectMRN,
+  getPendingItems,
   createValidation,
   updateValidation
 } = require('../controllers/mrnController');
@@ -31,6 +32,13 @@ router.get(
   '/',
   authorize('Admin', 'Manager', 'Engineer', 'Store Keeper', 'Viewer'),
   list
+);
+
+// GET /api/mrns/:id/pending-items - Get pending items for an MRN (all authenticated users)
+router.get(
+  '/:id/pending-items',
+  authorize('Admin', 'Manager', 'Engineer', 'Store Keeper', 'Viewer'),
+  getPendingItems
 );
 
 // GET /api/mrns/:id - Get by ID (all authenticated users)
