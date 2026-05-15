@@ -188,9 +188,6 @@ const getMRNSummaryStats = async (filters = {}) => {
   if (filters.status) {
     where.status = filters.status;
   }
-  if (filters.supplier_name) {
-    where.supplier_name = { [Op.like]: `%${filters.supplier_name}%` };
-  }
   if (filters.date_from || filters.date_to) {
     where.created_at = {};
     if (filters.date_from) {

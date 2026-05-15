@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { reportsAPI, localPurchasesAPI, mrnAPI, grnAPI } from '../services/api';
+import { getMrnItemsCount } from '../services/utils';
 
 function DashboardPage() {
   const [summary, setSummary] = useState(null);
@@ -129,7 +130,7 @@ function DashboardPage() {
         {recentMRNs.length === 0 ? (
           <div className="empty-state">
             <h3>No MRNs yet</h3>
-            <p>Create your first Material Receipt Note.</p>
+            <p>Create your first Material Request Note.</p>
           </div>
         ) : (
           <div className="table-container">
@@ -137,24 +138,25 @@ function DashboardPage() {
               <thead>
                 <tr>
                   <th>MRN Number</th>
-                  <th>Supplier</th>
-                  <th>Item</th>
-                  <th>Amount</th>
+                  <th>Request For</th>
+                  <th>Items</th>
                   <th>Status</th>
                   <th>Date</th>
                 </tr>
               </thead>
               <tbody>
-                {recentMRNs.map(record => (
+                {recentMRNs.map(record => {
+                  const itemsCount = getMrnItemsCount(record);
+                  return (
                   <tr key={record.id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/mrns/${record.id}`)}>
                     <td>{record.mrn_number}</td>
-                    <td>{record.supplier_name}</td>
-                    <td>{record.item_name}</td>
-                    <td>{parseFloat(record.total_amount || 0).toFixed(2)}</td>
+                    <td>{record.request_for}</td>
+                    <td>{itemsCount} item(s)</td>
                     <td><span className={`badge badge-${(record.status || 'draft').toLowerCase()}`}>{record.status}</span></td>
                     <td>{record.created_at ? new Date(record.created_at).toLocaleDateString() : '-'}</td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

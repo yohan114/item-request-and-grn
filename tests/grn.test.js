@@ -59,12 +59,10 @@ beforeAll(async () => {
     .post('/api/mrns')
     .set('Authorization', `Bearer ${adminToken}`)
     .send({
-      supplier_name: 'MRN Supplier for GRN',
-      purchase_category: 'Electronics',
-      item_name: 'Laptop',
-      item_description: 'Business laptop',
-      quantity: 5,
-      unit_price: 1000.00
+      request_for: 'Electronics',
+      items: [
+        { item_no: '1', description: 'Business laptop', qty: 5 }
+      ]
     });
 
   linkedMRNId = mrnRes.body.data.id;

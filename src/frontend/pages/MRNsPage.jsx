@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { mrnAPI } from '../services/api';
+import { getMrnItemsCount } from '../services/utils';
 import { useAuth } from '../context/AuthContext';
 
 function MRNsPage() {
@@ -8,7 +9,6 @@ function MRNsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
-  const [category, setCategory] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const { user } = useAuth();
@@ -16,7 +16,7 @@ function MRNsPage() {
 
   useEffect(() => {
     loadRecords();
-  }, [page, status, category]);
+  }, [page, status]);
 
   const loadRecords = async () => {
     try {
@@ -24,7 +24,6 @@ function MRNsPage() {
       const params = { page, limit: 10 };
       if (search) params.search = search;
       if (status) params.status = status;
-      if (category) params.category = category;
       const res = await mrnAPI.getAll(params);
       const data = res.data.data;
       setRecords(Array.isArray(data) ? data : (data?.records || []));
@@ -53,11 +52,15 @@ function MRNsPage() {
     }
   };
 
+  const getItemsCount = (record) => {
+    return getMrnItemsCount(record);
+  };
+
   return (
     <div>
       <div className="card">
         <div className="card-header">
-          <h2>Material Receipt Notes (MRN)</h2>
+          <h2>Material Request Notes (MRN)</h2>
           {['Admin', 'Manager', 'Store Keeper'].includes(user?.role) && (
             <button className="btn btn-primary" onClick={() => navigate('/mrns/new')}>
               + New MRN
@@ -69,7 +72,7 @@ function MRNsPage() {
           <input
             type="text"
             className="form-control"
-            placeholder="Search by supplier, item, MRN number..."
+            placeholder="Search by MRN number..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -80,15 +83,6 @@ function MRNsPage() {
             <option value="Purchased">Purchased</option>
             <option value="Delivered">Delivered</option>
             <option value="Completed">Completed</option>
-          </select>
-          <select className="form-control" value={category} onChange={(e) => { setCategory(e.target.value); setPage(1); }}>
-            <option value="">All Categories</option>
-            <option value="Office Supplies">Office Supplies</option>
-            <option value="IT Equipment">IT Equipment</option>
-            <option value="Furniture">Furniture</option>
-            <option value="Maintenance">Maintenance</option>
-            <option value="Raw Materials">Raw Materials</option>
-            <option value="Other">Other</option>
           </select>
           <button type="submit" className="btn btn-secondary">Search</button>
         </form>
@@ -107,13 +101,10 @@ function MRNsPage() {
                 <thead>
                   <tr>
                     <th>MRN Number</th>
-                    <th>Supplier</th>
-                    <th>Item</th>
-                    <th>Category</th>
-                    <th>Qty</th>
-                    <th>Amount</th>
-                    <th>Status</th>
                     <th>Date</th>
+                    <th>Request For</th>
+                    <th>Items</th>
+                    <th>Status</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
@@ -121,13 +112,10 @@ function MRNsPage() {
                   {records.map(record => (
                     <tr key={record.id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/mrns/${record.id}`)}>
                       <td>{record.mrn_number}</td>
-                      <td>{record.supplier_name}</td>
-                      <td>{record.item_name}</td>
-                      <td>{record.purchase_category}</td>
-                      <td>{record.quantity}</td>
-                      <td>{parseFloat(record.total_amount || 0).toFixed(2)}</td>
-                      <td><span className={`badge badge-${(record.status || 'draft').toLowerCase()}`}>{record.status}</span></td>
                       <td>{record.created_at ? new Date(record.created_at).toLocaleDateString() : '-'}</td>
+                      <td>{record.request_for}</td>
+                      <td>{getItemsCount(record)} item(s)</td>
+                      <td><span className={`badge badge-${(record.status || 'draft').toLowerCase()}`}>{record.status}</span></td>
                       <td>
                         <div className="btn-group" onClick={(e) => e.stopPropagation()}>
                           <button className="btn btn-secondary btn-sm" onClick={() => navigate(`/mrns/${record.id}`)}>View</button>

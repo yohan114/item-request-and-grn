@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { mrnAPI, mrnAttachmentsAPI, mrnPdfAPI, grnAPI, attachmentsAPI } from '../services/api';
+import { parseMrnItems } from '../services/utils';
 import { useAuth } from '../context/AuthContext';
 import AttachmentUploadModal from './AttachmentUploadModal';
 
@@ -84,6 +85,8 @@ function MRNDetailPage() {
 
   const canEdit = record.status === 'Draft' && ['Admin', 'Manager', 'Store Keeper'].includes(user?.role);
 
+  const parsedItems = parseMrnItems(record.items);
+
   return (
     <div>
       <div className="card">
@@ -108,54 +111,63 @@ function MRNDetailPage() {
             <div className="value">{record.mrn_number}</div>
           </div>
           <div className="detail-item">
-            <div className="label">Supplier</div>
-            <div className="value">{record.supplier_name}</div>
+            <div className="label">Date</div>
+            <div className="value">{new Date(record.created_at || record.createdAt).toLocaleDateString()}</div>
           </div>
           <div className="detail-item">
-            <div className="label">Category</div>
-            <div className="value">{record.purchase_category}</div>
-          </div>
-          <div className="detail-item">
-            <div className="label">Item Name</div>
-            <div className="value">{record.item_name}</div>
-          </div>
-          <div className="detail-item">
-            <div className="label">Item Description</div>
-            <div className="value">{record.item_description || '-'}</div>
-          </div>
-          <div className="detail-item">
-            <div className="label">Quantity</div>
-            <div className="value">{record.quantity}</div>
-          </div>
-          <div className="detail-item">
-            <div className="label">Unit Price</div>
-            <div className="value">{parseFloat(record.unit_price || 0).toFixed(2)}</div>
-          </div>
-          <div className="detail-item">
-            <div className="label">Total Amount</div>
-            <div className="value">{parseFloat(record.total_amount || 0).toFixed(2)}</div>
-          </div>
-          <div className="detail-item">
-            <div className="label">Purchase Reason</div>
-            <div className="value">{record.purchase_reason || '-'}</div>
-          </div>
-          <div className="detail-item">
-            <div className="label">Received Date</div>
-            <div className="value">{record.received_date ? new Date(record.received_date).toLocaleDateString() : '-'}</div>
+            <div className="label">Request For</div>
+            <div className="value">{record.request_for}</div>
           </div>
           <div className="detail-item">
             <div className="label">Status</div>
             <div className="value">{record.status}</div>
           </div>
           <div className="detail-item">
-            <div className="label">Remarks</div>
-            <div className="value">{record.remarks || '-'}</div>
+            <div className="label">Request Person</div>
+            <div className="value">
+              {record.request_person_name || '-'}
+              {record.request_person_designation ? ` (${record.request_person_designation})` : ''}
+            </div>
+          </div>
+          <div className="detail-item">
+            <div className="label">Approval Person</div>
+            <div className="value">
+              {record.approval_person_name || '-'}
+              {record.approval_person_designation ? ` (${record.approval_person_designation})` : ''}
+            </div>
           </div>
           <div className="detail-item">
             <div className="label">Created</div>
             <div className="value">{new Date(record.created_at || record.createdAt).toLocaleString()}</div>
           </div>
         </div>
+
+        {/* Items Table */}
+        {parsedItems.length > 0 && (
+          <div style={{ marginTop: 16 }}>
+            <h3>Items</h3>
+            <div className="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Item No</th>
+                    <th>Description</th>
+                    <th>Quantity</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {parsedItems.map((item, index) => (
+                    <tr key={index}>
+                      <td>{item.item_no}</td>
+                      <td>{item.description}</td>
+                      <td>{item.qty}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Documents */}

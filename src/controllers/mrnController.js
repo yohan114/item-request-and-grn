@@ -1,58 +1,67 @@
 const { body } = require('express-validator');
 const { Op } = require('sequelize');
 const { MRN, User, Attachment } = require('../models');
-const { calculateTotalAmount, createMRNWithRetry } = require('../services/mrnService');
+const { createMRNWithRetry } = require('../services/mrnService');
 const { createAuditLog } = require('../utils/auditLogger');
 
 const createValidation = [
-  body('supplier_name').trim().notEmpty().withMessage('Supplier name is required'),
-  body('purchase_category').trim().notEmpty().withMessage('Purchase category is required'),
-  body('item_name').trim().notEmpty().withMessage('Item name is required'),
-  body('quantity').isFloat({ gt: 0 }).withMessage('Quantity must be a positive number'),
-  body('unit_price').isFloat({ gt: 0 }).withMessage('Unit price must be a positive number'),
-  body('remarks').optional({ values: 'falsy' }).trim().isLength({ max: 1000 }).withMessage('Remarks must not exceed 1000 characters'),
-  body('purchase_reason').optional({ values: 'falsy' }).trim().isLength({ max: 1000 }).withMessage('Purchase reason must not exceed 1000 characters')
+  body('request_for').trim().notEmpty().withMessage('Request For is required'),
+  body('items').isArray({ min: 1 }).withMessage('Items must be a non-empty array'),
+  body('items.*.item_no').trim().notEmpty().withMessage('Each item must have an item number'),
+  body('items.*.description').trim().notEmpty().withMessage('Each item must have a description'),
+  body('items.*.qty').isFloat({ gt: 0 }).withMessage('Each item must have a quantity greater than 0'),
+  body('request_person_name').optional({ values: 'falsy' }).trim(),
+  body('request_person_designation').optional({ values: 'falsy' }).trim(),
+  body('approval_person_name').optional({ values: 'falsy' }).trim(),
+  body('approval_person_designation').optional({ values: 'falsy' }).trim()
 ];
 
 const updateValidation = [
-  body('supplier_name').optional().trim().notEmpty().withMessage('Supplier name cannot be empty'),
-  body('purchase_category').optional().trim().notEmpty().withMessage('Purchase category cannot be empty'),
-  body('item_name').optional().trim().notEmpty().withMessage('Item name cannot be empty'),
-  body('quantity').optional().isFloat({ gt: 0 }).withMessage('Quantity must be a positive number'),
-  body('unit_price').optional().isFloat({ gt: 0 }).withMessage('Unit price must be a positive number'),
-  body('remarks').optional({ values: 'falsy' }).trim().isLength({ max: 1000 }).withMessage('Remarks must not exceed 1000 characters'),
-  body('purchase_reason').optional({ values: 'falsy' }).trim().isLength({ max: 1000 }).withMessage('Purchase reason must not exceed 1000 characters')
+  body('request_for').optional().trim().notEmpty().withMessage('Request For cannot be empty'),
+  body('items').optional().isArray({ min: 1 }).withMessage('Items must be a non-empty array'),
+  body('items').optional().custom((items) => {
+    if (!Array.isArray(items)) return true;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (!item.item_no || (typeof item.item_no === 'string' && !item.item_no.trim())) {
+        throw new Error(`Item ${i + 1} must have an item number`);
+      }
+      if (!item.description || (typeof item.description === 'string' && !item.description.trim())) {
+        throw new Error(`Item ${i + 1} must have a description`);
+      }
+      if (item.qty === undefined || item.qty === null || isNaN(item.qty) || parseFloat(item.qty) <= 0) {
+        throw new Error(`Item ${i + 1} must have a quantity greater than 0`);
+      }
+    }
+    return true;
+  }),
+  body('items.*.item_no').trim().notEmpty().withMessage('Each item must have an item number'),
+  body('items.*.description').trim().notEmpty().withMessage('Each item must have a description'),
+  body('items.*.qty').isFloat({ gt: 0 }).withMessage('Each item must have a quantity greater than 0'),
+  body('request_person_name').optional({ values: 'falsy' }).trim(),
+  body('request_person_designation').optional({ values: 'falsy' }).trim(),
+  body('approval_person_name').optional({ values: 'falsy' }).trim(),
+  body('approval_person_designation').optional({ values: 'falsy' }).trim()
 ];
 
 const create = async (req, res, next) => {
   try {
     const {
-      supplier_name,
-      purchase_category,
-      item_name,
-      item_description,
-      quantity,
-      unit_price,
-      purchase_reason,
-      remarks,
-      manual_mrn_reference,
-      received_date
+      request_for,
+      items,
+      request_person_name,
+      request_person_designation,
+      approval_person_name,
+      approval_person_designation
     } = req.body;
 
-    const total_amount = calculateTotalAmount(quantity, unit_price);
-
     const mrn = await createMRNWithRetry({
-      supplier_name,
-      purchase_category,
-      item_name,
-      item_description: item_description || null,
-      quantity,
-      unit_price,
-      total_amount,
-      purchase_reason: purchase_reason || null,
-      remarks: remarks || null,
-      manual_mrn_reference: manual_mrn_reference || null,
-      received_date: received_date || null,
+      request_for,
+      items,
+      request_person_name: request_person_name || null,
+      request_person_designation: request_person_designation || null,
+      approval_person_name: approval_person_name || null,
+      approval_person_designation: approval_person_designation || null,
       created_by: req.user.id
     });
 
@@ -80,10 +89,9 @@ const list = async (req, res, next) => {
     const {
       page = 1,
       limit = 10,
-      supplier_name,
       mrn_number,
       status,
-      purchase_category,
+      request_for,
       date_from,
       date_to
     } = req.query;
@@ -94,17 +102,14 @@ const list = async (req, res, next) => {
 
     const where = {};
 
-    if (supplier_name) {
-      where.supplier_name = { [Op.like]: `%${supplier_name}%` };
-    }
     if (mrn_number) {
       where.mrn_number = { [Op.like]: `%${mrn_number}%` };
     }
     if (status) {
       where.status = status;
     }
-    if (purchase_category) {
-      where.purchase_category = purchase_category;
+    if (request_for) {
+      where.request_for = { [Op.like]: `%${request_for}%` };
     }
     if (date_from || date_to) {
       where.created_at = {};
@@ -204,9 +209,8 @@ const update = async (req, res, next) => {
 
     const updateData = {};
     const allowedFields = [
-      'supplier_name', 'purchase_category', 'item_name', 'item_description',
-      'quantity', 'unit_price', 'purchase_reason', 'remarks',
-      'manual_mrn_reference', 'received_date', 'status'
+      'request_for', 'items', 'request_person_name', 'request_person_designation',
+      'approval_person_name', 'approval_person_designation', 'status'
     ];
 
     for (const field of allowedFields) {
@@ -214,11 +218,6 @@ const update = async (req, res, next) => {
         updateData[field] = req.body[field];
       }
     }
-
-    // Recalculate total_amount if quantity or unit_price changed
-    const newQuantity = updateData.quantity !== undefined ? updateData.quantity : mrn.quantity;
-    const newUnitPrice = updateData.unit_price !== undefined ? updateData.unit_price : mrn.unit_price;
-    updateData.total_amount = calculateTotalAmount(newQuantity, newUnitPrice);
 
     await mrn.update(updateData);
 

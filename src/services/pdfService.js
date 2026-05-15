@@ -276,77 +276,118 @@ const generateMRNSheetFromMRN = (mrn) => {
       doc.on('error', reject);
 
       // Header
-      drawHeader(doc, 'MATERIAL RECEIPT NOTE');
+      drawHeader(doc, 'MATERIAL REQUEST NOTE');
 
       // Document info
       const infoY = doc.y;
       doc.font('Helvetica-Bold').fontSize(10);
-      doc.text(`MRN Number: `, 50, infoY);
+      doc.text('MRN Number: ', 50, infoY);
       doc.font('Helvetica').text(mrn.mrn_number || 'N/A', 140, infoY);
 
       doc.font('Helvetica-Bold').text('Date: ', 350, infoY);
       doc.font('Helvetica').text(
-        mrn.received_date || new Date().toISOString().slice(0, 10),
+        mrn.created_at ? new Date(mrn.created_at).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
         390,
         infoY
       );
 
       doc.moveDown(1.5);
 
-      // Supplier details
-      doc.font('Helvetica-Bold').fontSize(11).text('SUPPLIER DETAILS', 50, doc.y);
-      doc.moveDown(0.5);
-      const supplierY = doc.y;
-      doc.font('Helvetica-Bold').fontSize(10).text('Supplier Name:', 50, supplierY);
-      doc.font('Helvetica').text(mrn.supplier_name || 'N/A', 160, supplierY);
-      doc.moveDown(0.3);
-      doc.font('Helvetica-Bold').text('Category:', 50, doc.y);
-      doc.font('Helvetica').text(mrn.purchase_category || 'N/A', 160, doc.y);
+      // Request For
+      doc.font('Helvetica-Bold').fontSize(10).text('Request For:', 50, doc.y);
+      doc.font('Helvetica').text(mrn.request_for || 'N/A', 140, doc.y);
       doc.moveDown(1);
 
-      // Item details
-      doc.font('Helvetica-Bold').fontSize(11).text('ITEM DETAILS', 50, doc.y);
+      // Items table
+      doc.font('Helvetica-Bold').fontSize(11).text('ITEMS', 50, doc.y);
       doc.moveDown(0.5);
+
+      // Parse items
+      let items = [];
+      if (mrn.items) {
+        if (Array.isArray(mrn.items)) {
+          items = mrn.items;
+        } else if (typeof mrn.items === 'string') {
+          try { items = JSON.parse(mrn.items); } catch (e) { items = []; }
+        }
+      }
 
       // Item table header
       const itemTableTop = doc.y;
+      const colWidths = [80, 315, 100];
+      const colStarts = [50, 130, 445];
+
       doc.font('Helvetica-Bold').fontSize(9);
-      doc.text('Item Name', 55, itemTableTop + 5, { width: 150 });
-      doc.text('Description', 180, itemTableTop + 5, { width: 130 });
-      doc.text('Quantity', 320, itemTableTop + 5, { width: 60 });
-      doc.text('Unit Price', 390, itemTableTop + 5, { width: 70 });
-      doc.text('Total', 470, itemTableTop + 5, { width: 70 });
+      doc.text('Item No', colStarts[0] + 5, itemTableTop + 5, { width: colWidths[0] - 10 });
+      doc.text('Description', colStarts[1] + 5, itemTableTop + 5, { width: colWidths[1] - 10 });
+      doc.text('Quantity', colStarts[2] + 5, itemTableTop + 5, { width: colWidths[2] - 10 });
 
       doc.moveTo(50, itemTableTop).lineTo(545, itemTableTop).stroke();
       doc.moveTo(50, itemTableTop + 20).lineTo(545, itemTableTop + 20).stroke();
 
-      // Item row
-      const itemRowY = itemTableTop + 25;
+      // Item rows
+      let rowY = itemTableTop + 25;
       doc.font('Helvetica').fontSize(9);
-      doc.text(mrn.item_name || 'N/A', 55, itemRowY, { width: 120 });
-      doc.text(mrn.item_description || 'N/A', 180, itemRowY, { width: 130 });
-      doc.text(String(mrn.quantity || 0), 320, itemRowY, { width: 60 });
-      doc.text(String(mrn.unit_price || 0), 390, itemRowY, { width: 70 });
-      doc.text(String(mrn.total_amount || 0), 470, itemRowY, { width: 70 });
 
-      doc.moveTo(50, itemRowY + 20).lineTo(545, itemRowY + 20).stroke();
+      if (items.length === 0) {
+        doc.text('No items', colStarts[0] + 5, rowY, { width: 400 });
+        rowY += 20;
+      } else {
+        items.forEach((item) => {
+          doc.text(String(item.item_no || ''), colStarts[0] + 5, rowY, { width: colWidths[0] - 10 });
+          doc.text(String(item.description || ''), colStarts[1] + 5, rowY, { width: colWidths[1] - 10 });
+          doc.text(String(item.qty || 0), colStarts[2] + 5, rowY, { width: colWidths[2] - 10 });
+          rowY += 20;
+          doc.moveTo(50, rowY).lineTo(545, rowY).stroke();
+        });
+      }
+
+      if (items.length === 0) {
+        doc.moveTo(50, rowY).lineTo(545, rowY).stroke();
+      }
 
       // Vertical lines for item table
-      [50, 175, 315, 385, 465, 545].forEach(x => {
-        doc.moveTo(x, itemTableTop).lineTo(x, itemRowY + 20).stroke();
+      [50, colStarts[1], colStarts[2], 545].forEach(x => {
+        doc.moveTo(x, itemTableTop).lineTo(x, rowY).stroke();
       });
 
-      doc.y = itemRowY + 40;
+      doc.y = rowY + 30;
 
-      // Received date and remarks
-      doc.font('Helvetica-Bold').fontSize(10).text('Received Date:', 50, doc.y);
-      doc.font('Helvetica').text(mrn.received_date || 'N/A', 160, doc.y);
+      // Signature sections
+      // REQUEST PERSON section
+      doc.font('Helvetica-Bold').fontSize(11).text('REQUEST PERSON', 50, doc.y);
       doc.moveDown(0.5);
-      doc.font('Helvetica-Bold').text('Purchase Reason / Remarks:', 50, doc.y);
-      doc.font('Helvetica').text(mrn.purchase_reason || mrn.remarks || 'N/A', 210, doc.y);
 
-      // Signature table
-      drawSignatureTable(doc);
+      const reqStartY = doc.y;
+      doc.font('Helvetica-Bold').fontSize(10).text('Name:', 50, reqStartY);
+      doc.font('Helvetica').text(mrn.request_person_name || '________________________', 130, reqStartY);
+      doc.moveDown(0.5);
+      doc.font('Helvetica-Bold').text('Designation:', 50, doc.y);
+      doc.font('Helvetica').text(mrn.request_person_designation || '________________________', 130, doc.y);
+      doc.moveDown(0.5);
+      doc.font('Helvetica-Bold').text('Signature:', 50, doc.y);
+      doc.font('Helvetica').text('________________________', 130, doc.y);
+      doc.moveDown(0.5);
+      doc.font('Helvetica-Bold').text('Date:', 50, doc.y);
+      doc.font('Helvetica').text('________________________', 130, doc.y);
+      doc.moveDown(1.5);
+
+      // APPROVAL PERSON section
+      doc.font('Helvetica-Bold').fontSize(11).text('APPROVAL PERSON', 50, doc.y);
+      doc.moveDown(0.5);
+
+      const appStartY = doc.y;
+      doc.font('Helvetica-Bold').fontSize(10).text('Name:', 50, appStartY);
+      doc.font('Helvetica').text(mrn.approval_person_name || '________________________', 130, appStartY);
+      doc.moveDown(0.5);
+      doc.font('Helvetica-Bold').text('Designation:', 50, doc.y);
+      doc.font('Helvetica').text(mrn.approval_person_designation || '________________________', 130, doc.y);
+      doc.moveDown(0.5);
+      doc.font('Helvetica-Bold').text('Signature:', 50, doc.y);
+      doc.font('Helvetica').text('________________________', 130, doc.y);
+      doc.moveDown(0.5);
+      doc.font('Helvetica-Bold').text('Date:', 50, doc.y);
+      doc.font('Helvetica').text('________________________', 130, doc.y);
 
       doc.end();
     } catch (error) {
