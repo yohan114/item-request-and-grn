@@ -1,5 +1,27 @@
+const multer = require('multer');
+
 const errorHandler = (err, req, res, next) => {
   console.error('Error:', err.message);
+
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({
+        success: false,
+        message: 'File too large. Maximum size is 10MB.'
+      });
+    }
+    return res.status(400).json({
+      success: false,
+      message: err.message
+    });
+  }
+
+  if (err.message && err.message.includes('File type not allowed')) {
+    return res.status(400).json({
+      success: false,
+      message: err.message
+    });
+  }
 
   if (err.name === 'SequelizeValidationError') {
     return res.status(400).json({
