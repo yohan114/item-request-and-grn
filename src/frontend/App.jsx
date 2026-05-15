@@ -8,6 +8,12 @@ import DashboardPage from './pages/DashboardPage';
 import LocalPurchasesPage from './pages/LocalPurchasesPage';
 import LocalPurchaseFormPage from './pages/LocalPurchaseFormPage';
 import LocalPurchaseDetailPage from './pages/LocalPurchaseDetailPage';
+import MRNsPage from './pages/MRNsPage';
+import MRNFormPage from './pages/MRNFormPage';
+import MRNDetailPage from './pages/MRNDetailPage';
+import GRNsPage from './pages/GRNsPage';
+import GRNFormPage from './pages/GRNFormPage';
+import GRNDetailPage from './pages/GRNDetailPage';
 import UsersPage from './pages/UsersPage';
 import ReportsPage from './pages/ReportsPage';
 import AuditLogsPage from './pages/AuditLogsPage';
@@ -25,6 +31,14 @@ function App() {
             <Route path="local-purchases/new" element={<LocalPurchaseFormPage />} />
             <Route path="local-purchases/:id/edit" element={<LocalPurchaseFormPage />} />
             <Route path="local-purchases/:id" element={<LocalPurchaseDetailPage />} />
+            <Route path="mrns" element={<MRNsPage />} />
+            <Route path="mrns/new" element={<MRNFormPage />} />
+            <Route path="mrns/:id/edit" element={<MRNFormPage />} />
+            <Route path="mrns/:id" element={<MRNDetailPage />} />
+            <Route path="grns" element={<GRNsPage />} />
+            <Route path="grns/new" element={<GRNFormPage />} />
+            <Route path="grns/:id/edit" element={<GRNFormPage />} />
+            <Route path="grns/:id" element={<GRNDetailPage />} />
             <Route path="users" element={<UsersPage />} />
             <Route path="reports" element={<ReportsPage />} />
             <Route path="audit-logs" element={<AuditLogsPage />} />

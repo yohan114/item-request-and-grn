@@ -9,6 +9,14 @@ function Layout() {
   const getPageTitle = () => {
     const path = location.pathname;
     if (path.includes('/dashboard')) return 'Dashboard';
+    if (path.includes('/mrns/new')) return 'New MRN';
+    if (path.match(/\/mrns\/[^/]+\/edit/)) return 'Edit MRN';
+    if (path.match(/\/mrns\/[^/]+/)) return 'MRN Details';
+    if (path.includes('/mrns')) return 'Material Receipt Notes';
+    if (path.includes('/grns/new')) return 'New GRN';
+    if (path.match(/\/grns\/[^/]+\/edit/)) return 'Edit GRN';
+    if (path.match(/\/grns\/[^/]+/)) return 'GRN Details';
+    if (path.includes('/grns')) return 'Goods Received Notes';
     if (path.includes('/local-purchases/new')) return 'New Local Purchase';
     if (path.includes('/edit')) return 'Edit Local Purchase';
     if (path.includes('/local-purchases/')) return 'Local Purchase Details';
@@ -21,10 +29,12 @@ function Layout() {
 
   const navItems = [
     { path: '/dashboard', label: 'Dashboard', icon: '\u2302', roles: null },
+    { path: '/mrns', label: 'MRN', icon: '\u2709', roles: null },
+    { path: '/grns', label: 'GRN', icon: '\u2611', roles: null },
     { path: '/local-purchases', label: 'Local Purchases', icon: '\u2630', roles: null },
-    { path: '/users', label: 'Users', icon: '\u263A', roles: ['Admin'] },
     { path: '/reports', label: 'Reports', icon: '\u2691', roles: ['Admin', 'Manager'] },
-    { path: '/audit-logs', label: 'Audit Logs', icon: '\u2699', roles: ['Admin', 'Manager'] }
+    { path: '/audit-logs', label: 'Audit Logs', icon: '\u2699', roles: ['Admin', 'Manager'] },
+    { path: '/users', label: 'Users', icon: '\u263A', roles: ['Admin'] }
   ];
 
   const visibleItems = navItems.filter(item =>

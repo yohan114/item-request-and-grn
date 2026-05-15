@@ -95,4 +95,50 @@ export const auditLogsAPI = {
   getByEntity: (entityType, entityId) => api.get(`/audit-logs/${entityType}/${entityId}`)
 };
 
+// MRN API
+export const mrnAPI = {
+  getAll: (params) => api.get('/mrns', { params }),
+  getById: (id) => api.get(`/mrns/${id}`),
+  create: (data) => api.post('/mrns', data),
+  update: (id, data) => api.put(`/mrns/${id}`, data),
+  delete: (id) => api.delete(`/mrns/${id}`)
+};
+
+// GRN API
+export const grnAPI = {
+  getAll: (params) => api.get('/grns', { params }),
+  getById: (id) => api.get(`/grns/${id}`),
+  create: (data) => api.post('/grns', data),
+  update: (id, data) => api.put(`/grns/${id}`, data),
+  delete: (id) => api.delete(`/grns/${id}`)
+};
+
+// MRN Attachments API
+export const mrnAttachmentsAPI = {
+  getByMRN: (id) => api.get(`/mrns/${id}/attachments`),
+  upload: (id, formData, onProgress) => api.post(`/mrns/${id}/attachments`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    onUploadProgress: onProgress
+  })
+};
+
+// GRN Attachments API
+export const grnAttachmentsAPI = {
+  getByGRN: (id) => api.get(`/grns/${id}/attachments`),
+  upload: (id, formData, onProgress) => api.post(`/grns/${id}/attachments`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    onUploadProgress: onProgress
+  })
+};
+
+// MRN PDF API
+export const mrnPdfAPI = {
+  getMRN: (id) => api.get(`/mrns/${id}/mrn-sheet`, { responseType: 'blob' })
+};
+
+// GRN PDF API
+export const grnPdfAPI = {
+  getGRN: (id) => api.get(`/grns/${id}/grn-sheet`, { responseType: 'blob' })
+};
+
 export default api;

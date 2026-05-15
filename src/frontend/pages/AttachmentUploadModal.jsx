@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
-import { attachmentsAPI } from '../services/api';
+import { attachmentsAPI, mrnAttachmentsAPI, grnAttachmentsAPI } from '../services/api';
 
-function AttachmentUploadModal({ purchaseId, onClose, onUploaded }) {
+function AttachmentUploadModal({ purchaseId, entityType, entityId, onClose, onUploaded }) {
   const [file, setFile] = useState(null);
   const [type, setType] = useState('Manual MRN Photo');
   const [uploading, setUploading] = useState(false);
@@ -44,11 +44,19 @@ function AttachmentUploadModal({ purchaseId, onClose, onUploaded }) {
     setProgress(0);
 
     try {
-      await attachmentsAPI.upload(purchaseId, formData, (e) => {
+      const onProgress = (e) => {
         if (e.lengthComputable) {
           setProgress(Math.round((e.loaded / e.total) * 100));
         }
-      });
+      };
+
+      if (entityType === 'mrn') {
+        await mrnAttachmentsAPI.upload(entityId, formData, onProgress);
+      } else if (entityType === 'grn') {
+        await grnAttachmentsAPI.upload(entityId, formData, onProgress);
+      } else {
+        await attachmentsAPI.upload(purchaseId, formData, onProgress);
+      }
       onUploaded();
       onClose();
     } catch (err) {
