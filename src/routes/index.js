@@ -6,12 +6,18 @@ const userRoutes = require('./userRoutes');
 const localPurchaseRoutes = require('./localPurchaseRoutes');
 const attachmentRoutes = require('./attachmentRoutes');
 const pdfRoutes = require('./pdfRoutes');
+const approvalRoutes = require('./approvalRoutes');
+const auditLogRoutes = require('./auditLogRoutes');
+const reportRoutes = require('./reportRoutes');
 
 router.use('/auth', authRoutes);
 router.use('/users', userRoutes);
 router.use('/local-purchases', localPurchaseRoutes);
+router.use('/local-purchases', approvalRoutes);
 router.use('/', attachmentRoutes);
 router.use('/', pdfRoutes);
+router.use('/audit-logs', auditLogRoutes);
+router.use('/reports', reportRoutes);
 
 // Health check
 router.get('/health', (req, res) => {
