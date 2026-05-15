@@ -37,12 +37,16 @@ function DashboardPage() {
           <span className="stat-label">Total Records</span>
         </div>
         <div className="stat-card pending">
-          <span className="stat-value">{summary?.by_status?.Pending || 0}</span>
-          <span className="stat-label">Pending</span>
+          <span className="stat-value">{summary?.by_status?.['MRN Created'] || 0}</span>
+          <span className="stat-label">MRN Created</span>
+        </div>
+        <div className="stat-card warning">
+          <span className="stat-value">{summary?.by_status?.['GRN Pending'] || 0}</span>
+          <span className="stat-label">GRN Pending</span>
         </div>
         <div className="stat-card approved">
-          <span className="stat-value">{summary?.by_status?.Approved || 0}</span>
-          <span className="stat-label">Approved</span>
+          <span className="stat-value">{summary?.by_status?.['Pending Approval'] || 0}</span>
+          <span className="stat-label">Pending Approval</span>
         </div>
         <div className="stat-card completed">
           <span className="stat-value">{summary?.by_status?.Completed || 0}</span>
@@ -80,8 +84,8 @@ function DashboardPage() {
                   <tr key={record.id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/local-purchases/${record.id}`)}>
                     <td>{record.supplier_name}</td>
                     <td>{record.item_name}</td>
-                    <td>{record.category}</td>
-                    <td>{parseFloat(record.total_price || 0).toFixed(2)}</td>
+                    <td>{record.purchase_category || record.category}</td>
+                    <td>{parseFloat(record.total_amount || record.total_price || 0).toFixed(2)}</td>
                     <td><span className={`badge badge-${(record.status || 'pending').toLowerCase()}`}>{record.status}</span></td>
                     <td>{new Date(record.created_at).toLocaleDateString()}</td>
                   </tr>

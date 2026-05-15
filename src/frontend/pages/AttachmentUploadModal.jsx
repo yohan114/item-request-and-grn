@@ -3,7 +3,7 @@ import { attachmentsAPI } from '../services/api';
 
 function AttachmentUploadModal({ purchaseId, onClose, onUploaded }) {
   const [file, setFile] = useState(null);
-  const [type, setType] = useState('Invoice');
+  const [type, setType] = useState('Manual MRN Photo');
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState('');
@@ -71,10 +71,16 @@ function AttachmentUploadModal({ purchaseId, onClose, onUploaded }) {
         <div className="form-group">
           <label>Attachment Type</label>
           <select className="form-control" value={type} onChange={(e) => setType(e.target.value)}>
+            <option value="Manual MRN Photo">Manual MRN Photo</option>
+            <option value="Manual MRN Scanned Copy">Manual MRN Scanned Copy</option>
+            <option value="GRN Photo">GRN Photo</option>
+            <option value="GRN Scanned Copy">GRN Scanned Copy</option>
             <option value="Invoice">Invoice</option>
-            <option value="Receipt">Receipt</option>
-            <option value="Quotation">Quotation</option>
             <option value="Delivery Note">Delivery Note</option>
+            <option value="Quotation">Quotation</option>
+            <option value="Payment Proof">Payment Proof</option>
+            <option value="Signed MRN Sheet">Signed MRN Sheet</option>
+            <option value="Signed GRN Sheet">Signed GRN Sheet</option>
             <option value="Other">Other</option>
           </select>
         </div>

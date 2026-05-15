@@ -64,6 +64,7 @@ export const approvalsAPI = {
   approve: (id, data) => api.post(`/local-purchases/${id}/approve`, data),
   reject: (id, data) => api.post(`/local-purchases/${id}/reject`, data),
   complete: (id, data) => api.post(`/local-purchases/${id}/complete`, data),
+  advanceStatus: (id, data) => api.post(`/local-purchases/${id}/advance-status`, data),
   getHistory: (id) => api.get(`/local-purchases/${id}/approval-history`)
 };
 

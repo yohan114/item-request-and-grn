@@ -11,8 +11,9 @@ function LocalPurchaseFormPage() {
   const [error, setError] = useState('');
   const [form, setForm] = useState({
     supplier_name: '',
-    category: 'Office Supplies',
+    purchase_category: 'Office Supplies',
     item_name: '',
+    item_description: '',
     quantity: 1,
     unit_price: 0,
     invoice_number: '',
@@ -34,8 +35,9 @@ function LocalPurchaseFormPage() {
       const data = res.data.data;
       setForm({
         supplier_name: data.supplier_name || '',
-        category: data.category || 'Office Supplies',
+        purchase_category: data.purchase_category || data.category || 'Office Supplies',
         item_name: data.item_name || '',
+        item_description: data.item_description || '',
         quantity: data.quantity || 1,
         unit_price: data.unit_price || 0,
         invoice_number: data.invoice_number || '',
@@ -72,7 +74,7 @@ function LocalPurchaseFormPage() {
         ...form,
         quantity: parseFloat(form.quantity),
         unit_price: parseFloat(form.unit_price),
-        total_price: totalPrice
+        total_amount: totalPrice
       };
 
       if (isEdit) {
@@ -118,7 +120,7 @@ function LocalPurchaseFormPage() {
             </div>
             <div className="form-group">
               <label>Category *</label>
-              <select name="category" className="form-control" value={form.category} onChange={handleChange}>
+              <select name="purchase_category" className="form-control" value={form.purchase_category} onChange={handleChange}>
                 <option value="Office Supplies">Office Supplies</option>
                 <option value="IT Equipment">IT Equipment</option>
                 <option value="Furniture">Furniture</option>
@@ -139,6 +141,17 @@ function LocalPurchaseFormPage() {
               onChange={handleChange}
               placeholder="Enter item name"
               required
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Item Description</label>
+            <textarea
+              name="item_description"
+              className="form-control"
+              value={form.item_description}
+              onChange={handleChange}
+              placeholder="Enter item description..."
             />
           </div>
 

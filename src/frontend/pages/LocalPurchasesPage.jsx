@@ -75,7 +75,14 @@ function LocalPurchasesPage() {
           />
           <select className="form-control" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
             <option value="">All Status</option>
-            <option value="Pending">Pending</option>
+            <option value="MRN Created">MRN Created</option>
+            <option value="MRN Uploaded">MRN Uploaded</option>
+            <option value="Item Purchased">Item Purchased</option>
+            <option value="Goods Received at Stores">Goods Received at Stores</option>
+            <option value="GRN Pending">GRN Pending</option>
+            <option value="Invoice Attached">Invoice Attached</option>
+            <option value="GRN Completed">GRN Completed</option>
+            <option value="Pending Approval">Pending Approval</option>
             <option value="Approved">Approved</option>
             <option value="Rejected">Rejected</option>
             <option value="Completed">Completed</option>
@@ -120,15 +127,15 @@ function LocalPurchasesPage() {
                     <tr key={record.id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/local-purchases/${record.id}`)}>
                       <td>{record.supplier_name}</td>
                       <td>{record.item_name}</td>
-                      <td>{record.category}</td>
+                      <td>{record.purchase_category || record.category}</td>
                       <td>{record.quantity}</td>
-                      <td>{parseFloat(record.total_price || 0).toFixed(2)}</td>
+                      <td>{parseFloat(record.total_amount || record.total_price || 0).toFixed(2)}</td>
                       <td><span className={`badge badge-${(record.status || 'pending').toLowerCase()}`}>{record.status}</span></td>
                       <td>{record.invoice_date ? new Date(record.invoice_date).toLocaleDateString() : '-'}</td>
                       <td>
                         <div className="btn-group" onClick={(e) => e.stopPropagation()}>
                           <button className="btn btn-secondary btn-sm" onClick={() => navigate(`/local-purchases/${record.id}`)}>View</button>
-                          {record.status === 'Pending' && ['Admin', 'Manager', 'Store Keeper'].includes(user?.role) && (
+                          {record.status === 'MRN Created' && ['Admin', 'Manager', 'Store Keeper'].includes(user?.role) && (
                             <button className="btn btn-secondary btn-sm" onClick={() => navigate(`/local-purchases/${record.id}/edit`)}>Edit</button>
                           )}
                           {['Admin'].includes(user?.role) && (
