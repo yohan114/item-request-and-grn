@@ -67,7 +67,7 @@ function GRNsPage() {
           <input
             type="text"
             className="form-control"
-            placeholder="Search by supplier, item, GRN number..."
+            placeholder="Search by supplier, GRN number..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -95,11 +95,8 @@ function GRNsPage() {
                 <thead>
                   <tr>
                     <th>GRN Number</th>
-                    <th>Linked MRN</th>
                     <th>Supplier</th>
-                    <th>Item</th>
-                    <th>Received Qty</th>
-                    <th>Accepted Qty</th>
+                    <th>Project Name</th>
                     <th>Status</th>
                     <th>Date</th>
                     <th>Actions</th>
@@ -109,11 +106,8 @@ function GRNsPage() {
                   {records.map(record => (
                     <tr key={record.id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/grns/${record.id}`)}>
                       <td>{record.grn_number}</td>
-                      <td>{record.mrn?.mrn_number || record.MRN?.mrn_number || '-'}</td>
                       <td>{record.supplier_name}</td>
-                      <td>{record.item_name}</td>
-                      <td>{record.received_quantity}</td>
-                      <td>{record.accepted_quantity}</td>
+                      <td>{record.project_name || '-'}</td>
                       <td><span className={`badge badge-${(record.status || 'pending').toLowerCase()}`}>{record.status}</span></td>
                       <td>{record.created_at ? new Date(record.created_at || record.createdAt).toLocaleDateString() : '-'}</td>
                       <td>

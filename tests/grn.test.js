@@ -79,34 +79,45 @@ describe('GRN - Create', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         supplier_name: 'GRN Supplier',
-        item_name: 'Widget',
-        received_quantity: 100,
-        checked_quantity: 100,
-        accepted_quantity: 95,
-        rejected_quantity: 5
+        project_name: 'Project Alpha',
+        items: [
+          { item_no: '1', description: 'Widget A', qty: 100, price: 25.50 },
+          { item_no: '2', description: 'Widget B', qty: 50, price: 10 }
+        ],
+        request_person_name: 'John Doe',
+        request_person_designation: 'Engineer',
+        approval_person_name: 'Jane Smith',
+        approval_person_designation: 'Manager'
       });
 
     expect(res.status).toBe(201);
     expect(res.body.success).toBe(true);
     expect(res.body.data.grn_number).toBeDefined();
     expect(res.body.data.supplier_name).toBe('GRN Supplier');
+    expect(res.body.data.project_name).toBe('Project Alpha');
+    expect(res.body.data.items).toHaveLength(2);
+    expect(res.body.data.items[0].item_no).toBe('1');
+    expect(res.body.data.items[0].price).toBe(25.50);
+    expect(res.body.data.request_person_name).toBe('John Doe');
+    expect(res.body.data.approval_person_name).toBe('Jane Smith');
     createdGRNId = res.body.data.id;
   });
 
-  it('should create GRN linked to existing MRN', async () => {
+  it('should create GRN with minimal fields', async () => {
     const res = await request(app)
       .post('/api/grns')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
-        supplier_name: 'Linked Supplier',
-        item_name: 'Linked Item',
-        mrn_id: linkedMRNId,
-        received_quantity: 5
+        supplier_name: 'Minimal Supplier',
+        items: [
+          { item_no: '1', description: 'Basic item', qty: 1, price: 0 }
+        ]
       });
 
     expect(res.status).toBe(201);
     expect(res.body.success).toBe(true);
-    expect(res.body.data.mrn_id).toBe(linkedMRNId);
+    expect(res.body.data.supplier_name).toBe('Minimal Supplier');
+    expect(res.body.data.items).toHaveLength(1);
   });
 
   it('should reject creation by Viewer role', async () => {
@@ -115,8 +126,9 @@ describe('GRN - Create', () => {
       .set('Authorization', `Bearer ${viewerToken}`)
       .send({
         supplier_name: 'Viewer Supplier',
-        item_name: 'Viewer Item',
-        received_quantity: 10
+        items: [
+          { item_no: '1', description: 'Item', qty: 10, price: 5 }
+        ]
       });
 
     expect(res.status).toBe(403);
@@ -133,6 +145,34 @@ describe('GRN - Create', () => {
     expect(res.body.errors).toBeDefined();
     expect(res.body.errors.length).toBeGreaterThan(0);
   });
+
+  it('should return 400 for empty items array', async () => {
+    const res = await request(app)
+      .post('/api/grns')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        supplier_name: 'Test Supplier',
+        items: []
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+  });
+
+  it('should return 400 for items with invalid qty', async () => {
+    const res = await request(app)
+      .post('/api/grns')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        supplier_name: 'Test Supplier',
+        items: [
+          { item_no: '1', description: 'Item', qty: -1, price: 5 }
+        ]
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+  });
 });
 
 describe('GRN - List with Pagination', () => {
@@ -143,9 +183,10 @@ describe('GRN - List with Pagination', () => {
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
           supplier_name: `GRN Supplier ${i}`,
-          item_name: `GRN Item ${i}`,
-          received_quantity: (i + 1) * 10,
-          mrn_id: i < 3 ? linkedMRNId : undefined
+          project_name: `Project ${i}`,
+          items: [
+            { item_no: '1', description: `Item ${i}`, qty: (i + 1) * 10, price: i * 5 }
+          ]
         });
     }
   });
@@ -177,45 +218,20 @@ describe('GRN - List with Pagination', () => {
       expect(record.status).toBe('Pending');
     });
   });
-
-  it('should support mrn_id filter', async () => {
-    const res = await request(app)
-      .get(`/api/grns?mrn_id=${linkedMRNId}`)
-      .set('Authorization', `Bearer ${adminToken}`);
-
-    expect(res.status).toBe(200);
-    expect(res.body.success).toBe(true);
-    expect(res.body.data.length).toBeGreaterThan(0);
-    res.body.data.forEach(record => {
-      expect(record.mrn_id).toBe(linkedMRNId);
-    });
-  });
 });
 
 describe('GRN - Get by ID', () => {
-  it('should return GRN with creator and linked MRN info', async () => {
-    // Create a GRN linked to MRN for this test
-    const createRes = await request(app)
-      .post('/api/grns')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({
-        supplier_name: 'Detail Supplier',
-        item_name: 'Detail Item',
-        mrn_id: linkedMRNId,
-        received_quantity: 10
-      });
-
-    const grnId = createRes.body.data.id;
-
+  it('should return GRN with creator info', async () => {
     const res = await request(app)
-      .get(`/api/grns/${grnId}`)
+      .get(`/api/grns/${createdGRNId}`)
       .set('Authorization', `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
-    expect(res.body.data.id).toBe(grnId);
+    expect(res.body.data.id).toBe(createdGRNId);
     expect(res.body.data.grnCreator).toBeDefined();
-    expect(res.body.data.mrn).toBeDefined();
+    expect(res.body.data.items).toBeDefined();
+    expect(res.body.data.items.length).toBeGreaterThan(0);
   });
 
   it('should return 404 for non-existent ID', async () => {
@@ -229,32 +245,39 @@ describe('GRN - Get by ID', () => {
 });
 
 describe('GRN - Update', () => {
-  it('should allow updating quantity fields', async () => {
+  it('should allow updating fields', async () => {
     const res = await request(app)
       .put(`/api/grns/${createdGRNId}`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
-        received_quantity: 200,
-        accepted_quantity: 190,
-        rejected_quantity: 10
+        supplier_name: 'Updated Supplier',
+        project_name: 'Updated Project',
+        items: [
+          { item_no: '1', description: 'Updated Widget', qty: 200, price: 30 }
+        ]
       });
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
+    expect(res.body.data.supplier_name).toBe('Updated Supplier');
+    expect(res.body.data.project_name).toBe('Updated Project');
+    expect(res.body.data.items).toHaveLength(1);
+    expect(res.body.data.items[0].description).toBe('Updated Widget');
   });
 
-  it('should reject when accepted_quantity + rejected_quantity > received_quantity', async () => {
+  it('should allow updating signature fields', async () => {
     const res = await request(app)
       .put(`/api/grns/${createdGRNId}`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
-        received_quantity: 100,
-        accepted_quantity: 80,
-        rejected_quantity: 30
+        request_person_name: 'New Request Person',
+        approval_person_designation: 'Director'
       });
 
-    expect(res.status).toBe(400);
-    expect(res.body.success).toBe(false);
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.request_person_name).toBe('New Request Person');
+    expect(res.body.data.approval_person_designation).toBe('Director');
   });
 });
 
@@ -265,8 +288,9 @@ describe('GRN - Delete', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         supplier_name: 'Delete Supplier',
-        item_name: 'Delete Item',
-        received_quantity: 10
+        items: [
+          { item_no: '1', description: 'Delete Item', qty: 10, price: 5 }
+        ]
       });
 
     const deleteId = createRes.body.data.id;
@@ -291,8 +315,9 @@ describe('GRN - Delete', () => {
       .set('Authorization', `Bearer ${storeKeeperToken}`)
       .send({
         supplier_name: 'SK Delete Supplier',
-        item_name: 'SK Delete Item',
-        received_quantity: 5
+        items: [
+          { item_no: '1', description: 'SK Item', qty: 5, price: 2 }
+        ]
       });
 
     const res = await request(app)

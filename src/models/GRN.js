@@ -20,57 +20,45 @@ module.exports = (sequelize) => {
       type: DataTypes.STRING,
       allowNull: false
     },
-    item_name: {
+    project_name: {
       type: DataTypes.STRING,
-      allowNull: false
+      allowNull: true
     },
-    item_description: {
+    items: {
       type: DataTypes.TEXT,
+      allowNull: false,
+      get() {
+        const rawValue = this.getDataValue('items');
+        if (!rawValue) return [];
+        try {
+          return JSON.parse(rawValue);
+        } catch (e) {
+          return [];
+        }
+      },
+      set(value) {
+        this.setDataValue('items', typeof value === 'string' ? value : JSON.stringify(value));
+      }
+    },
+    request_person_name: {
+      type: DataTypes.STRING,
       allowNull: true
     },
-    received_quantity: {
-      type: DataTypes.DECIMAL(10, 2),
+    request_person_designation: {
+      type: DataTypes.STRING,
       allowNull: true
     },
-    checked_quantity: {
-      type: DataTypes.DECIMAL(10, 2),
+    approval_person_name: {
+      type: DataTypes.STRING,
       allowNull: true
     },
-    accepted_quantity: {
-      type: DataTypes.DECIMAL(10, 2),
-      allowNull: true
-    },
-    rejected_quantity: {
-      type: DataTypes.DECIMAL(10, 2),
-      allowNull: true
-    },
-    store_confirmation: {
-      type: DataTypes.BOOLEAN,
-      defaultValue: false
-    },
-    received_date: {
-      type: DataTypes.DATEONLY,
-      allowNull: true
-    },
-    remarks: {
-      type: DataTypes.TEXT,
+    approval_person_designation: {
+      type: DataTypes.STRING,
       allowNull: true
     },
     status: {
       type: DataTypes.ENUM('Pending', 'Inspection', 'Completed', 'Rejected'),
       defaultValue: 'Pending'
-    },
-    invoice_number: {
-      type: DataTypes.STRING,
-      allowNull: true
-    },
-    invoice_date: {
-      type: DataTypes.DATEONLY,
-      allowNull: true
-    },
-    invoice_attached: {
-      type: DataTypes.BOOLEAN,
-      defaultValue: false
     },
     created_by: {
       type: DataTypes.UUID,

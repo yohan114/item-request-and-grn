@@ -6,79 +6,71 @@ const { createAuditLog } = require('../utils/auditLogger');
 
 const createValidation = [
   body('supplier_name').trim().notEmpty().withMessage('Supplier name is required'),
-  body('item_name').trim().notEmpty().withMessage('Item name is required'),
-  body('mrn_id').optional({ values: 'falsy' }).isUUID().withMessage('mrn_id must be a valid UUID'),
-  body('received_quantity').optional({ values: 'falsy' }).isFloat({ min: 0 }).withMessage('Received quantity must be non-negative'),
-  body('checked_quantity').optional({ values: 'falsy' }).isFloat({ min: 0 }).withMessage('Checked quantity must be non-negative'),
-  body('accepted_quantity').optional({ values: 'falsy' }).isFloat({ min: 0 }).withMessage('Accepted quantity must be non-negative'),
-  body('rejected_quantity').optional({ values: 'falsy' }).isFloat({ min: 0 }).withMessage('Rejected quantity must be non-negative'),
-  body('remarks').optional({ values: 'falsy' }).trim().isLength({ max: 1000 }).withMessage('Remarks must not exceed 1000 characters')
+  body('project_name').optional({ values: 'falsy' }).trim(),
+  body('items').isArray({ min: 1 }).withMessage('Items must be a non-empty array'),
+  body('items.*.item_no').trim().notEmpty().withMessage('Each item must have an item number'),
+  body('items.*.description').trim().notEmpty().withMessage('Each item must have a description'),
+  body('items.*.qty').isFloat({ gt: 0 }).withMessage('Each item must have a quantity greater than 0'),
+  body('items.*.price').isFloat({ min: 0 }).withMessage('Each item must have a price of 0 or more'),
+  body('request_person_name').optional({ values: 'falsy' }).trim(),
+  body('request_person_designation').optional({ values: 'falsy' }).trim(),
+  body('approval_person_name').optional({ values: 'falsy' }).trim(),
+  body('approval_person_designation').optional({ values: 'falsy' }).trim()
 ];
 
 const updateValidation = [
   body('supplier_name').optional().trim().notEmpty().withMessage('Supplier name cannot be empty'),
-  body('item_name').optional().trim().notEmpty().withMessage('Item name cannot be empty'),
-  body('mrn_id').optional({ values: 'falsy' }).isUUID().withMessage('mrn_id must be a valid UUID'),
-  body('received_quantity').optional({ values: 'falsy' }).isFloat({ min: 0 }).withMessage('Received quantity must be non-negative'),
-  body('checked_quantity').optional({ values: 'falsy' }).isFloat({ min: 0 }).withMessage('Checked quantity must be non-negative'),
-  body('accepted_quantity').optional({ values: 'falsy' }).isFloat({ min: 0 }).withMessage('Accepted quantity must be non-negative'),
-  body('rejected_quantity').optional({ values: 'falsy' }).isFloat({ min: 0 }).withMessage('Rejected quantity must be non-negative'),
-  body('remarks').optional({ values: 'falsy' }).trim().isLength({ max: 1000 }).withMessage('Remarks must not exceed 1000 characters')
+  body('project_name').optional({ values: 'falsy' }).trim(),
+  body('items').optional().isArray({ min: 1 }).withMessage('Items must be a non-empty array'),
+  body('items').optional().custom((items) => {
+    if (!Array.isArray(items)) return true;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (!item.item_no || (typeof item.item_no === 'string' && !item.item_no.trim())) {
+        throw new Error(`Item ${i + 1} must have an item number`);
+      }
+      if (!item.description || (typeof item.description === 'string' && !item.description.trim())) {
+        throw new Error(`Item ${i + 1} must have a description`);
+      }
+      if (item.qty === undefined || item.qty === null || isNaN(item.qty) || parseFloat(item.qty) <= 0) {
+        throw new Error(`Item ${i + 1} must have a quantity greater than 0`);
+      }
+      if (item.price === undefined || item.price === null || isNaN(item.price) || parseFloat(item.price) < 0) {
+        throw new Error(`Item ${i + 1} must have a price of 0 or more`);
+      }
+    }
+    return true;
+  }),
+  body('items.*.item_no').trim().notEmpty().withMessage('Each item must have an item number'),
+  body('items.*.description').trim().notEmpty().withMessage('Each item must have a description'),
+  body('items.*.qty').isFloat({ gt: 0 }).withMessage('Each item must have a quantity greater than 0'),
+  body('items.*.price').isFloat({ min: 0 }).withMessage('Each item must have a price of 0 or more'),
+  body('request_person_name').optional({ values: 'falsy' }).trim(),
+  body('request_person_designation').optional({ values: 'falsy' }).trim(),
+  body('approval_person_name').optional({ values: 'falsy' }).trim(),
+  body('approval_person_designation').optional({ values: 'falsy' }).trim()
 ];
 
 const create = async (req, res, next) => {
   try {
     const {
       supplier_name,
-      item_name,
-      item_description,
-      mrn_id,
-      received_quantity,
-      checked_quantity,
-      accepted_quantity,
-      rejected_quantity,
-      store_confirmation,
-      received_date,
-      remarks,
-      invoice_number,
-      invoice_date,
-      invoice_attached
+      project_name,
+      items,
+      request_person_name,
+      request_person_designation,
+      approval_person_name,
+      approval_person_designation
     } = req.body;
 
-    let finalSupplierName = supplier_name;
-    let finalItemName = item_name;
-    let finalItemDescription = item_description || null;
-
-    // If mrn_id provided, validate and auto-fill from MRN
-    if (mrn_id) {
-      const mrn = await MRN.findByPk(mrn_id);
-      if (!mrn) {
-        return res.status(400).json({
-          success: false,
-          message: 'Referenced MRN not found'
-        });
-      }
-      // Auto-fill from MRN if not explicitly provided
-      if (!supplier_name) finalSupplierName = mrn.supplier_name;
-      if (!item_name) finalItemName = mrn.item_name;
-      if (!item_description) finalItemDescription = mrn.item_description;
-    }
-
     const grn = await createGRNWithRetry({
-      supplier_name: finalSupplierName,
-      item_name: finalItemName,
-      item_description: finalItemDescription,
-      mrn_id: mrn_id || null,
-      received_quantity: received_quantity || null,
-      checked_quantity: checked_quantity || null,
-      accepted_quantity: accepted_quantity || null,
-      rejected_quantity: rejected_quantity || null,
-      store_confirmation: store_confirmation || false,
-      received_date: received_date || null,
-      remarks: remarks || null,
-      invoice_number: invoice_number || null,
-      invoice_date: invoice_date || null,
-      invoice_attached: invoice_attached || false,
+      supplier_name,
+      project_name: project_name || null,
+      items,
+      request_person_name: request_person_name || null,
+      request_person_designation: request_person_designation || null,
+      approval_person_name: approval_person_name || null,
+      approval_person_designation: approval_person_designation || null,
       created_by: req.user.id
     });
 
@@ -234,47 +226,14 @@ const update = async (req, res, next) => {
 
     const updateData = {};
     const allowedFields = [
-      'supplier_name', 'item_name', 'item_description',
-      'received_quantity', 'checked_quantity', 'accepted_quantity',
-      'rejected_quantity', 'store_confirmation', 'received_date',
-      'remarks', 'status', 'invoice_number', 'invoice_date', 'invoice_attached'
+      'supplier_name', 'project_name', 'items',
+      'request_person_name', 'request_person_designation',
+      'approval_person_name', 'approval_person_designation', 'status'
     ];
 
     for (const field of allowedFields) {
       if (req.body[field] !== undefined) {
         updateData[field] = req.body[field];
-      }
-    }
-
-    // Quantity integrity validation
-    const receivedQty = updateData.received_quantity !== undefined
-      ? parseFloat(updateData.received_quantity)
-      : (grn.received_quantity !== null ? parseFloat(grn.received_quantity) : null);
-    const acceptedQty = updateData.accepted_quantity !== undefined
-      ? parseFloat(updateData.accepted_quantity)
-      : (grn.accepted_quantity !== null ? parseFloat(grn.accepted_quantity) : null);
-    const rejectedQty = updateData.rejected_quantity !== undefined
-      ? parseFloat(updateData.rejected_quantity)
-      : (grn.rejected_quantity !== null ? parseFloat(grn.rejected_quantity) : null);
-
-    // Validate non-negative quantities
-    if (receivedQty !== null && receivedQty < 0) {
-      return res.status(400).json({ success: false, message: 'received_quantity must be >= 0' });
-    }
-    if (acceptedQty !== null && acceptedQty < 0) {
-      return res.status(400).json({ success: false, message: 'accepted_quantity must be >= 0' });
-    }
-    if (rejectedQty !== null && rejectedQty < 0) {
-      return res.status(400).json({ success: false, message: 'rejected_quantity must be >= 0' });
-    }
-
-    // Validate quantity relationships
-    if (receivedQty !== null && acceptedQty !== null && rejectedQty !== null) {
-      if ((acceptedQty + rejectedQty) > receivedQty) {
-        return res.status(400).json({
-          success: false,
-          message: 'accepted_quantity + rejected_quantity cannot exceed received_quantity'
-        });
       }
     }
 

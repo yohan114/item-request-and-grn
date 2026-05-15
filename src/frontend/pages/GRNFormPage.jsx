@@ -1,37 +1,30 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { grnAPI, mrnAPI } from '../services/api';
+import { useNavigate, useParams } from 'react-router-dom';
+import { grnAPI } from '../services/api';
+import { parseMrnItems } from '../services/utils';
 
 function GRNFormPage() {
   const { id } = useParams();
-  const [searchParams] = useSearchParams();
   const isEdit = !!id;
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [linkedMRN, setLinkedMRN] = useState(null);
   const [form, setForm] = useState({
-    mrn_id: searchParams.get('mrn_id') || '',
     supplier_name: '',
-    item_name: '',
-    item_description: '',
-    received_quantity: '',
-    checked_quantity: '',
-    accepted_quantity: '',
-    rejected_quantity: '',
-    store_confirmation: false,
-    received_date: '',
-    invoice_number: '',
-    invoice_date: '',
-    remarks: ''
+    project_name: '',
+    request_person_name: '',
+    request_person_designation: '',
+    approval_person_name: '',
+    approval_person_designation: ''
   });
+  const [items, setItems] = useState([{ item_no: '', description: '', qty: '', price: '' }]);
+
+  const today = new Date().toLocaleDateString();
 
   useEffect(() => {
     if (isEdit) {
       loadRecord();
-    } else if (form.mrn_id) {
-      loadMRN(form.mrn_id);
     }
   }, [id]);
 
@@ -41,22 +34,21 @@ function GRNFormPage() {
       const res = await grnAPI.getById(id);
       const data = res.data.data;
       setForm({
-        mrn_id: data.mrn_id || '',
         supplier_name: data.supplier_name || '',
-        item_name: data.item_name || '',
-        item_description: data.item_description || '',
-        received_quantity: data.received_quantity ?? '',
-        checked_quantity: data.checked_quantity ?? '',
-        accepted_quantity: data.accepted_quantity ?? '',
-        rejected_quantity: data.rejected_quantity ?? '',
-        store_confirmation: data.store_confirmation || false,
-        received_date: data.received_date ? data.received_date.split('T')[0] : '',
-        invoice_number: data.invoice_number || '',
-        invoice_date: data.invoice_date ? data.invoice_date.split('T')[0] : '',
-        remarks: data.remarks || ''
+        project_name: data.project_name || '',
+        request_person_name: data.request_person_name || '',
+        request_person_designation: data.request_person_designation || '',
+        approval_person_name: data.approval_person_name || '',
+        approval_person_designation: data.approval_person_designation || ''
       });
-      if (data.mrn_id) {
-        setLinkedMRN(data.mrn || data.MRN || null);
+      const parsedItems = parseMrnItems(data.items);
+      if (parsedItems.length > 0) {
+        setItems(parsedItems.map(item => ({
+          item_no: item.item_no || '',
+          description: item.description || '',
+          qty: item.qty !== undefined ? String(item.qty) : '',
+          price: item.price !== undefined ? String(item.price) : ''
+        })));
       }
     } catch (err) {
       setError('Failed to load record');
@@ -65,50 +57,71 @@ function GRNFormPage() {
     }
   };
 
-  const loadMRN = async (mrnId) => {
-    try {
-      const res = await mrnAPI.getById(mrnId);
-      const mrn = res.data.data;
-      setLinkedMRN(mrn);
-      setForm(prev => ({
-        ...prev,
-        supplier_name: mrn.supplier_name || prev.supplier_name,
-        item_name: mrn.item_name || prev.item_name,
-        item_description: mrn.item_description || prev.item_description
-      }));
-    } catch (err) {
-      console.error('Failed to load linked MRN:', err);
-    }
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setForm(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    setForm(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
+  const handleItemChange = (index, field, value) => {
+    setItems(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+      return updated;
+    });
+  };
+
+  const addItem = () => {
+    setItems(prev => [...prev, { item_no: '', description: '', qty: '', price: '' }]);
+  };
+
+  const removeItem = (index) => {
+    if (items.length <= 1) return;
+    setItems(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
-    if (!form.supplier_name.trim()) { setError('Supplier name is required'); return; }
-    if (!form.item_name.trim()) { setError('Item name is required'); return; }
-
-    const accepted = parseFloat(form.accepted_quantity) || 0;
-    const rejected = parseFloat(form.rejected_quantity) || 0;
-    const received = parseFloat(form.received_quantity) || 0;
-    if (received > 0 && (accepted + rejected) > received) {
-      setError('Accepted + Rejected quantity cannot exceed Received quantity');
+    if (!form.supplier_name.trim()) {
+      setError('Supplier Name is required');
       return;
+    }
+
+    for (let i = 0; i < items.length; i++) {
+      if (!items[i].item_no.trim()) {
+        setError(`Item ${i + 1}: Item No is required`);
+        return;
+      }
+      if (!items[i].description.trim()) {
+        setError(`Item ${i + 1}: Description is required`);
+        return;
+      }
+      if (!items[i].qty || parseFloat(items[i].qty) <= 0) {
+        setError(`Item ${i + 1}: Quantity must be greater than 0`);
+        return;
+      }
+      if (items[i].price === '' || parseFloat(items[i].price) < 0) {
+        setError(`Item ${i + 1}: Price must be 0 or more`);
+        return;
+      }
     }
 
     try {
       setSaving(true);
       const payload = {
-        ...form,
-        received_quantity: parseFloat(form.received_quantity) || 0,
-        checked_quantity: parseFloat(form.checked_quantity) || 0,
-        accepted_quantity: accepted,
-        rejected_quantity: rejected
+        supplier_name: form.supplier_name,
+        project_name: form.project_name || undefined,
+        items: items.map(item => ({
+          item_no: item.item_no,
+          description: item.description,
+          qty: parseFloat(item.qty),
+          price: parseFloat(item.price)
+        })),
+        request_person_name: form.request_person_name || undefined,
+        request_person_designation: form.request_person_designation || undefined,
+        approval_person_name: form.approval_person_name || undefined,
+        approval_person_designation: form.approval_person_designation || undefined
       };
 
       if (isEdit) {
@@ -139,30 +152,17 @@ function GRNFormPage() {
         {error && <div className="alert alert-error">{error}</div>}
 
         <form onSubmit={handleSubmit}>
-          {/* Linked MRN */}
-          <div className="form-group">
-            <label>Linked MRN</label>
-            {linkedMRN ? (
+          <div className="form-row">
+            <div className="form-group">
+              <label>Date</label>
               <input
                 type="text"
                 className="form-control"
-                value={linkedMRN.mrn_number || form.mrn_id}
+                value={today}
                 readOnly
                 style={{ background: '#f8fafc' }}
               />
-            ) : (
-              <input
-                type="text"
-                name="mrn_id"
-                className="form-control"
-                value={form.mrn_id}
-                onChange={handleChange}
-                placeholder="Enter MRN ID (optional)"
-              />
-            )}
-          </div>
-
-          <div className="form-row">
+            </div>
             <div className="form-group">
               <label>Supplier Name *</label>
               <input
@@ -175,140 +175,145 @@ function GRNFormPage() {
                 required
               />
             </div>
+          </div>
+
+          <div className="form-group">
+            <label>Project Name</label>
+            <input
+              type="text"
+              name="project_name"
+              className="form-control"
+              value={form.project_name}
+              onChange={handleChange}
+              placeholder="Enter project name (optional)"
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Items *</label>
+            <div className="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Item No</th>
+                    <th>Description</th>
+                    <th>Qty</th>
+                    <th>Price</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((item, index) => (
+                    <tr key={index}>
+                      <td>
+                        <input
+                          type="text"
+                          className="form-control"
+                          value={item.item_no}
+                          onChange={(e) => handleItemChange(index, 'item_no', e.target.value)}
+                          placeholder="Item No"
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="text"
+                          className="form-control"
+                          value={item.description}
+                          onChange={(e) => handleItemChange(index, 'description', e.target.value)}
+                          placeholder="Description"
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          className="form-control"
+                          value={item.qty}
+                          onChange={(e) => handleItemChange(index, 'qty', e.target.value)}
+                          placeholder="Qty"
+                          min="0.01"
+                          step="0.01"
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          className="form-control"
+                          value={item.price}
+                          onChange={(e) => handleItemChange(index, 'price', e.target.value)}
+                          placeholder="Price"
+                          min="0"
+                          step="0.01"
+                        />
+                      </td>
+                      <td>
+                        {items.length > 1 && (
+                          <button
+                            type="button"
+                            className="btn btn-danger btn-sm"
+                            onClick={() => removeItem(index)}
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <button type="button" className="btn btn-secondary" onClick={addItem} style={{ marginTop: 8 }}>
+              + Add Item
+            </button>
+          </div>
+
+          <div className="form-row">
             <div className="form-group">
-              <label>Item Name *</label>
+              <label>Request Person Name</label>
               <input
                 type="text"
-                name="item_name"
+                name="request_person_name"
                 className="form-control"
-                value={form.item_name}
+                value={form.request_person_name}
                 onChange={handleChange}
-                placeholder="Enter item name"
-                required
-              />
-            </div>
-          </div>
-
-          <div className="form-group">
-            <label>Item Description</label>
-            <textarea
-              name="item_description"
-              className="form-control"
-              value={form.item_description}
-              onChange={handleChange}
-              placeholder="Enter item description..."
-            />
-          </div>
-
-          <div className="form-row">
-            <div className="form-group">
-              <label>Received Quantity</label>
-              <input
-                type="number"
-                name="received_quantity"
-                className="form-control"
-                value={form.received_quantity}
-                onChange={handleChange}
-                min="0"
-                step="0.01"
+                placeholder="Name of requesting person"
               />
             </div>
             <div className="form-group">
-              <label>Checked Quantity</label>
-              <input
-                type="number"
-                name="checked_quantity"
-                className="form-control"
-                value={form.checked_quantity}
-                onChange={handleChange}
-                min="0"
-                step="0.01"
-              />
-            </div>
-          </div>
-
-          <div className="form-row">
-            <div className="form-group">
-              <label>Accepted Quantity</label>
-              <input
-                type="number"
-                name="accepted_quantity"
-                className="form-control"
-                value={form.accepted_quantity}
-                onChange={handleChange}
-                min="0"
-                step="0.01"
-              />
-            </div>
-            <div className="form-group">
-              <label>Rejected Quantity</label>
-              <input
-                type="number"
-                name="rejected_quantity"
-                className="form-control"
-                value={form.rejected_quantity}
-                onChange={handleChange}
-                min="0"
-                step="0.01"
-              />
-            </div>
-          </div>
-
-          <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <input
-              type="checkbox"
-              id="store_confirmation"
-              name="store_confirmation"
-              checked={form.store_confirmation}
-              onChange={handleChange}
-            />
-            <label htmlFor="store_confirmation" style={{ margin: 0 }}>Store Confirmation</label>
-          </div>
-
-          <div className="form-group">
-            <label>Received Date</label>
-            <input
-              type="date"
-              name="received_date"
-              className="form-control"
-              value={form.received_date}
-              onChange={handleChange}
-            />
-          </div>
-
-          <div className="form-row">
-            <div className="form-group">
-              <label>Invoice Number</label>
+              <label>Request Person Designation</label>
               <input
                 type="text"
-                name="invoice_number"
+                name="request_person_designation"
                 className="form-control"
-                value={form.invoice_number}
+                value={form.request_person_designation}
                 onChange={handleChange}
-                placeholder="Invoice number"
-              />
-            </div>
-            <div className="form-group">
-              <label>Invoice Date</label>
-              <input
-                type="date"
-                name="invoice_date"
-                className="form-control"
-                value={form.invoice_date}
-                onChange={handleChange}
+                placeholder="Designation"
               />
             </div>
           </div>
 
-          <div className="form-group">
-            <label>Remarks</label>
-            <textarea
-              name="remarks"
-              className="form-control"
-              value={form.remarks}
-              onChange={handleChange}
-              placeholder="Additional notes..."
-            />
+          <div className="form-row">
+            <div className="form-group">
+              <label>Approval Person Name</label>
+              <input
+                type="text"
+                name="approval_person_name"
+                className="form-control"
+                value={form.approval_person_name}
+                onChange={handleChange}
+                placeholder="Name of approval person"
+              />
+            </div>
+            <div className="form-group">
+              <label>Approval Person Designation</label>
+              <input
+                type="text"
+                name="approval_person_designation"
+                className="form-control"
+                value={form.approval_person_designation}
+                onChange={handleChange}
+                placeholder="Designation"
+              />
+            </div>
           </div>
 
           <div className="btn-group mt-2">

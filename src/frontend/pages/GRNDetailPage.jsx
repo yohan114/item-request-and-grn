@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { grnAPI, grnAttachmentsAPI, grnPdfAPI, attachmentsAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { parseMrnItems } from '../services/utils';
 import AttachmentUploadModal from './AttachmentUploadModal';
 
 function GRNDetailPage() {
@@ -78,8 +79,8 @@ function GRNDetailPage() {
   if (loading) return <div className="loading">Loading...</div>;
   if (!record) return <div className="empty-state"><h3>GRN not found</h3></div>;
 
-  const linkedMRN = record.mrn || record.MRN || null;
   const canEdit = record.status === 'Pending' && ['Admin', 'Manager', 'Store Keeper'].includes(user?.role);
+  const items = parseMrnItems(record.items);
 
   return (
     <div>
@@ -105,104 +106,79 @@ function GRNDetailPage() {
             <div className="value">{record.grn_number}</div>
           </div>
           <div className="detail-item">
-            <div className="label">Supplier</div>
+            <div className="label">Supplier Name</div>
             <div className="value">{record.supplier_name}</div>
           </div>
           <div className="detail-item">
-            <div className="label">Item Name</div>
-            <div className="value">{record.item_name}</div>
-          </div>
-          <div className="detail-item">
-            <div className="label">Item Description</div>
-            <div className="value">{record.item_description || '-'}</div>
+            <div className="label">Project Name</div>
+            <div className="value">{record.project_name || '-'}</div>
           </div>
           <div className="detail-item">
             <div className="label">Status</div>
             <div className="value">{record.status}</div>
           </div>
           <div className="detail-item">
-            <div className="label">Received Date</div>
-            <div className="value">{record.received_date ? new Date(record.received_date).toLocaleDateString() : '-'}</div>
-          </div>
-          <div className="detail-item">
-            <div className="label">Invoice Number</div>
-            <div className="value">{record.invoice_number || '-'}</div>
-          </div>
-          <div className="detail-item">
-            <div className="label">Invoice Date</div>
-            <div className="value">{record.invoice_date ? new Date(record.invoice_date).toLocaleDateString() : '-'}</div>
-          </div>
-          <div className="detail-item">
-            <div className="label">Invoice Attached</div>
-            <div className="value">{record.invoice_attached ? 'Yes' : 'No'}</div>
-          </div>
-          <div className="detail-item">
-            <div className="label">Store Confirmation</div>
-            <div className="value">{record.store_confirmation ? 'Yes' : 'No'}</div>
-          </div>
-          <div className="detail-item">
-            <div className="label">Remarks</div>
-            <div className="value">{record.remarks || '-'}</div>
-          </div>
-          <div className="detail-item">
-            <div className="label">Created</div>
-            <div className="value">{new Date(record.created_at || record.createdAt).toLocaleString()}</div>
+            <div className="label">Date</div>
+            <div className="value">{new Date(record.created_at || record.createdAt).toLocaleDateString()}</div>
           </div>
         </div>
       </div>
 
-      {/* Linked MRN */}
-      {linkedMRN && (
+      {/* Items Table */}
+      <div className="card">
+        <div className="card-header">
+          <h2>Items</h2>
+        </div>
+        {items.length === 0 ? (
+          <p style={{ color: 'var(--gray-500)', fontSize: 14 }}>No items.</p>
+        ) : (
+          <div className="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Item No</th>
+                  <th>Description</th>
+                  <th>Qty</th>
+                  <th>Price</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((item, index) => (
+                  <tr key={index}>
+                    <td>{item.item_no}</td>
+                    <td>{item.description}</td>
+                    <td>{item.qty}</td>
+                    <td>{item.price}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Signature Info */}
+      {(record.request_person_name || record.approval_person_name) && (
         <div className="card">
           <div className="card-header">
-            <h2>Linked MRN</h2>
-            <button className="btn btn-secondary btn-sm" onClick={() => navigate(`/mrns/${linkedMRN.id}`)}>View MRN</button>
+            <h2>Signature Info</h2>
           </div>
           <div className="detail-grid">
-            <div className="detail-item">
-              <div className="label">MRN Number</div>
-              <div className="value">{linkedMRN.mrn_number}</div>
-            </div>
-            <div className="detail-item">
-              <div className="label">Supplier</div>
-              <div className="value">{linkedMRN.supplier_name}</div>
-            </div>
-            <div className="detail-item">
-              <div className="label">Item</div>
-              <div className="value">{linkedMRN.item_name}</div>
-            </div>
-            <div className="detail-item">
-              <div className="label">Status</div>
-              <div className="value">{linkedMRN.status}</div>
-            </div>
+            {record.request_person_name && (
+              <div className="detail-item">
+                <div className="label">Request Person</div>
+                <div className="value">{record.request_person_name}{record.request_person_designation ? ` (${record.request_person_designation})` : ''}</div>
+              </div>
+            )}
+            {record.approval_person_name && (
+              <div className="detail-item">
+                <div className="label">Approval Person</div>
+                <div className="value">{record.approval_person_name}{record.approval_person_designation ? ` (${record.approval_person_designation})` : ''}</div>
+              </div>
+            )}
           </div>
         </div>
       )}
-
-      {/* Quantity Details */}
-      <div className="card">
-        <div className="card-header">
-          <h2>Quantity Details</h2>
-        </div>
-        <div className="detail-grid">
-          <div className="detail-item">
-            <div className="label">Received Quantity</div>
-            <div className="value">{record.received_quantity ?? '-'}</div>
-          </div>
-          <div className="detail-item">
-            <div className="label">Checked Quantity</div>
-            <div className="value">{record.checked_quantity ?? '-'}</div>
-          </div>
-          <div className="detail-item">
-            <div className="label">Accepted Quantity</div>
-            <div className="value">{record.accepted_quantity ?? '-'}</div>
-          </div>
-          <div className="detail-item">
-            <div className="label">Rejected Quantity</div>
-            <div className="value">{record.rejected_quantity ?? '-'}</div>
-          </div>
-        </div>
-      </div>
 
       {/* Documents */}
       <div className="card">
